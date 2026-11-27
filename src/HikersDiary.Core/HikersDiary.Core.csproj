@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>HikersDiary.Core</AssemblyName>
+    <RootNamespace>HikersDiary.Core</RootNamespace>
+    <Description>Game-independent Hikers' Diary code: save format, build gate, matching rules.</Description>
+    <!-- Pure library: no BepInEx, no Unity, no game references. -->
+  </PropertyGroup>
+
+</Project>

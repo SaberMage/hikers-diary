@@ -1,0 +1,14 @@
+[book]
+title = "Hikers' Diary for Big Walk"
+description = "Big Walk persistence: the world and the players stay as they were left."
+authors = ["SaberMage"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+additional-css = ["theme/theme.css"]
+git-repository-url = "https://github.com/SaberMage/hikers-diary"
+edit-url-template = "https://github.com/SaberMage/hikers-diary/edit/main/docs-site/{path}"

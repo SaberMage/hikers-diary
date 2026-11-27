@@ -1,0 +1,36 @@
+# traceable-reqs manifest for Hikers' Diary.
+#
+# Authoritative requirement registry: every requirement and every KNOWN-HAZARDS
+# invariant lives here as a REQ-* id (see docs/TRACEABILITY.md for the full contract).
+#
+# ACQUIRE the CLI (it is a released binary, not a crate dependency):
+#   gh release download --repo BigscreenVR/traceable-reqs \
+#     --pattern '*windows*.exe' --output traceable-reqs.exe
+# Validate this manifest against the installed CLI: `traceable-reqs check`.
+#
+# THE FOUR-STAGE CONTRACT: every requirement is traced from
+#   doc  (prose/design)  ->  impl (production code)  ->  unit (unit test)  ->  int (cross-process/node)
+# Tag evidence in the SAME commit, on/above the real evidence:
+#   // [impl->REQ-FOO]   // [unit->REQ-FOO]   <!-- [doc->REQ-FOO] -->
+#
+# ACTIVATION MODEL: every requirement starts inactive (`required_stages = []`) so `check`
+# stays green pre-code. A milestone ACTIVATES its requirements by setting their real
+# `required_stages` when work on them begins. Deferred items stay [] until promoted.
+
+[scan]
+# Every evidence location. A missing root makes evidence SILENTLY vanish from the trace.
+roots = ["src", "tests", "docs", "scripts", "CONTEXT.md", "README.md"]
+
+[scan.extensions]
+# C# is not a built-in scanner language; without this mapping every .cs tag silently vanishes.
+".cs" = "c_like"
+
+[policy]
+required_stages = []
+
+# ───────────────────────────── Requirements ─────────────────────────────────
+
+[[requirements]]
+id = "REQ-HAZARD-UNKNOWN-BUILD"
+title = "On a game build that is not a Known Build, the mod installs no hooks and logs one line"
+required_stages = ["doc", "impl", "unit"]
