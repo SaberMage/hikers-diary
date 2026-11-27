@@ -50,15 +50,17 @@ The game starts directly in the last save, and players change saves from text ch
    - (c) Join at start, and the slideshow (stretch).
 2. A save title alone in chat starts a transition ONLY if it is a definite match to a known
    local save or friend session. Normal chat must never start a transition. Only the `new:` command
-   makes or changes a save. A picker for saves (the player does not type) comes later. Do not build it
-   until the liaison says so.
-3. The host is the authority. The host's save holds the state of all players, by Steam ID.
+   makes or changes a save. A picker for saves (the player does not type) is in revision (b). See
+   rule 10.
+3. The host is the authority. The host's save holds the state of all players, by the game
+   identifier (the EOS PUID, measured on 2026-11-27).
    An OPTIONAL mod daemon runs in the background. For each player who runs it, the latest
    save syncs to all players. Thus any player can host, and when the host disconnects, a
    different player can continue as host. A group can also run the mod as host on a
    dedicated computer.
-4. Non-friend discovery: the Steam lobby data holds the title and a hash of the password.
-   A lobby search finds the session by its title.
+4. Non-friend discovery: the EOS lobby data holds the title and a hash of the password.
+   A lobby search finds the session by its title. (The game uses EOS lobbies, not Steam
+   lobbies. The operator agreed to this on 2026-11-27.)
 5. At start, the history walk makes a maximum of 3 attempts in approximately 20 s. Then the
    mod hosts the last local save.
 6. A player who does not have the mod can break the saved state. Refuse the join, or show a
@@ -67,6 +69,21 @@ The game starts directly in the last save, and players change saves from text ch
    spike on them first in revision (a).
 8. The slideshow keeps a small ring of low-resolution frames and audio on disk.
 9. Gate on the game build. On a build that is not known, the mod stops safely.
+10. The operator decided the save picker for revision (b) on 2026-11-27. It is a diary and a
+    postcard rack. Use the game's pegboard panel and 5-slot pegboard assets. Do not make new 3D
+    assets.
+    - A vertical array of 3 pegboards is on one wall of the start area.
+    - Each new save puts a panel on an empty peg.
+    - Each panel shows the title, the date of the last play, the color stamps of the hikers,
+      and a photo. The photo is the most recent frame that has a minimum of one other player
+      in view. If no frame shows another player, use the most recent frame.
+    - Each panel is a persistent object. Players can carry it on the map.
+    - Recall: when a panel is not on its peg, the empty peg shows a tag with the save title.
+      A player pecks the tag, and the panel moves back to its peg.
+    - The frame capture of the slideshow ring (rule 8) is necessary for the photo. Build the
+      frame capture before revision (c).
+11. Revision (a) addition, 2026-11-27: when a session starts, the host moves each object that a
+    player cannot reach in deep water to the nearest shore.
 
 ## 4. Side project: local control seam (not in revisions a to c)
 

@@ -30,15 +30,18 @@ public sealed class Plugin : BasePlugin
             return;
         }
 
-        BodySpike.StorePath = System.IO.Path.Combine(Paths.ConfigPath, "HikersDiary", "spike-bodies.json");
-        BodySpike.MakeTestBody = Config.Bind("Spike", "MakeTestBody", false,
+        DiaryHost.StoreDir = System.IO.Path.Combine(Paths.ConfigPath, "HikersDiary");
+        DiaryHost.MakeTestBody = Config.Bind("Spike", "MakeTestBody", false,
             "Host only: make one test body at the host position, to test the body save and restore on one computer.").Value;
-        BodySpike.AutoHost = Config.Bind("Spike", "AutoHost", false,
+        DiaryHost.AutoHost = Config.Bind("Spike", "AutoHost", false,
             "Test aid: at the title menu, host the save that was played last, for 2 players.").Value;
-        ClassInjector.RegisterTypeInIl2Cpp<BodySpike>();
+        ClassInjector.RegisterTypeInIl2Cpp<DiaryHost>();
         var driver = new GameObject("HikersDiary") { hideFlags = HideFlags.HideAndDontSave };
         Object.DontDestroyOnLoad(driver);
-        driver.AddComponent<BodySpike>();
-        Logger.LogInfo($"Body spike armed. Store: {BodySpike.StorePath}");
+        driver.AddComponent<DiaryHost>();
+        var harmony = new HarmonyLib.Harmony(Guid);
+        harmony.PatchAll(typeof(SessionStopPatches));
+        Logger.LogInfo($"Diary: {harmony.GetPatchedMethods().Count()} session-stop hooks installed.");
+        Logger.LogInfo($"Diary armed. Store: {DiaryHost.StoreDir}");
     }
 }

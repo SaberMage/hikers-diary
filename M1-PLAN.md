@@ -15,6 +15,9 @@ After a game load, these items are the same as before the load:
 
 The Diary save (#2) holds this state. Only the host writes it.
 
+At session start, the host moves each object that a player cannot reach in deep water to the
+nearest shore.
+
 Out of scope: the title-screen skip, the chat commands, the signs, the auto-join, and the
 slideshow (revisions b and c).
 
@@ -25,6 +28,7 @@ slideshow (revisions b and c).
    Load the game. Spawn the body again. A second client joins. Make sure that
    `Corpse.FindMatch` finds the body and the game spawns the player at the body. This is the
    largest risk. If the spike fails, stop. Tell the liaison before you start T2.
+<!-- [doc->REQ-DIARY-SAVE] -->
 2. **T2 — Diary save (#2).** Write the save format and the atomic write in
    `HikersDiary.Core`. Add unit tests. Save a snapshot at an interval and when the session
    stops. Restore the state after the game completes its own load.
@@ -38,10 +42,11 @@ slideshow (revisions b and c).
 
 ## Open questions
 
-1. Which identifier is the key: the EOS PUID or the Steam ID? Measure it in a live session
-   (T1).
+1. Which identifier is the key: the EOS PUID or the Steam ID? T1 found the answer on
+   2026-11-27: the EOS PUID.
 2. Is `NetworkIdentity.sceneId` stable across loads? Measure it in T3.
-3. What is the second client for two-player tests? We asked the liaison on 2026-11-27.
+3. What is the second client for two-player tests? On 2026-11-27, the operator agreed to give a second account on
+   KITSUBITO (Ubuntu, Proton) or SCELTOUIN (Windows).
 
 ## Gate
 

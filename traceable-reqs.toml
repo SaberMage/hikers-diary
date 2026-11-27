@@ -39,3 +39,8 @@ required_stages = ["doc", "impl", "unit"]
 id = "REQ-BODY-SPIKE"
 title = "The host saves each body of a player who left, and spawns it again after a game load (#1)"
 required_stages = ["doc", "impl", "unit"]
+
+[[requirements]]
+id = "REQ-DIARY-SAVE"
+title = "The host keeps one versioned Diary save for each game slot, writes it atomically at an interval and when the host stops, never overwrites a file that it cannot read, and restores it after a game load (#2)"
+required_stages = ["doc", "impl", "unit"]
