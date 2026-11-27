@@ -19,7 +19,7 @@
 
 [scan]
 # Every evidence location. A missing root makes evidence SILENTLY vanish from the trace.
-roots = ["src", "tests", "docs", "scripts", "CONTEXT.md", "README.md"]
+roots = ["src", "tests", "docs", "scripts", "CONTEXT.md", "README.md", "M1-PLAN.md"]
 
 [scan.extensions]
 # C# is not a built-in scanner language; without this mapping every .cs tag silently vanishes.
@@ -33,4 +33,9 @@ required_stages = []
 [[requirements]]
 id = "REQ-HAZARD-UNKNOWN-BUILD"
 title = "On a game build that is not a Known Build, the mod installs no hooks and logs one line"
+required_stages = ["doc", "impl", "unit"]
+
+[[requirements]]
+id = "REQ-BODY-SPIKE"
+title = "The host saves each body of a player who left, and spawns it again after a game load (#1)"
 required_stages = ["doc", "impl", "unit"]

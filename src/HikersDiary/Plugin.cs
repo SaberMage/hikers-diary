@@ -2,7 +2,9 @@ using BepInEx;
 using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using HikersDiary.Core;
+using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace HikersDiary;
 
@@ -27,5 +29,14 @@ public sealed class Plugin : BasePlugin
             Logger.LogError($"{Name} disabled: game build {unity} is not a known build.");
             return;
         }
+
+        BodySpike.StorePath = System.IO.Path.Combine(Paths.ConfigPath, "HikersDiary", "spike-bodies.json");
+        BodySpike.MakeTestBody = Config.Bind("Spike", "MakeTestBody", false,
+            "Host only: make one test body at the host position, to test the body save and restore on one computer.").Value;
+        ClassInjector.RegisterTypeInIl2Cpp<BodySpike>();
+        var driver = new GameObject("HikersDiary") { hideFlags = HideFlags.HideAndDontSave };
+        Object.DontDestroyOnLoad(driver);
+        driver.AddComponent<BodySpike>();
+        Logger.LogInfo($"Body spike armed. Store: {BodySpike.StorePath}");
     }
 }
