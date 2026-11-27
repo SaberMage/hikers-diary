@@ -16,7 +16,7 @@ After a game load, these items are the same as before the load:
 The Diary save (#2) holds this state. Only the host writes it.
 
 At session start, the host moves each object that a player cannot reach in deep water to the
-nearest shore.
+nearest shore (#8).
 
 Out of scope: the title-screen skip, the chat commands, the signs, the auto-join, and the
 slideshow (revisions b and c).
