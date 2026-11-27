@@ -21,12 +21,17 @@ public sealed class BodySpike : MonoBehaviour
     private bool _restored;
     private bool _testBodyMade;
 
+    internal static bool AutoHost;
+    private static bool _autoHostTried;
+    private float _titleSeenAt = -1f;
+
     private void Update()
     {
         if (!NetworkServer.active)
         {
             _restored = false;
             _testBodyMade = false;
+            if (AutoHost && !_autoHostTried) TryAutoHost();
             return;
         }
         PlayerCharacter host = LocalPlayer();
@@ -122,6 +127,39 @@ public sealed class BodySpike : MonoBehaviour
             NetworkServer.Spawn(go, (NetworkConnection)null);
             Plugin.Logger.LogInfo($"Body spike: restored body {b.Identifier} at {pos}.");
         }
+    }
+
+    /// <summary>
+    /// Test aid: when the title menu shows, host the save that was played last, for 2 players,
+    /// with the same steps as HostMenuConfirm.ActionStart and PlayerCountMenu.ActionProceed.
+    /// </summary>
+    private void TryAutoHost()
+    {
+        // The first menu is MicCheckMenu (welcome and microphone check), then TitleMenu.
+        if (Object.FindObjectOfType<TitleMenu>() == null && Object.FindObjectOfType<MicCheckMenu>() == null)
+        {
+            _titleSeenAt = -1f;
+            return;
+        }
+        if (_titleSeenAt < 0f) { _titleSeenAt = Time.time; return; }
+        if (Time.time - _titleSeenAt < 3f) return;
+        _autoHostTried = true;
+
+        var saves = SaveManager.GetAllSaveDatasInFolder();
+        SaveData last = null;
+        for (int i = 0; saves != null && i < saves.Count; i++)
+            if (last == null || saves[i].lastPlayedTimeAsLong > last.lastPlayedTimeAsLong) last = saves[i];
+        if (last == null)
+        {
+            Plugin.Logger.LogWarning("Auto host: no save in the folder. Use the menu.");
+            return;
+        }
+        BaseManager.instance.saveManager.currentData = last;
+        SaveManager.WriteCurrentSaveData();
+        NetworkMinder.SetServerPassword(last.password);
+        PlayerCountSwapper.playerCount = PlayerCount.PlayerCount2;
+        Plugin.Logger.LogInfo($"Auto host: save '{last.slotName}' ({last.filenameUid}), 2 players.");
+        NetworkMinder.StartHost();
     }
 
     /// <summary>Makes a body of the host with a test identifier, so that one computer can test the save and the restore.</summary>
