@@ -66,9 +66,27 @@ slideshow (revisions b and c).
    1. It sets the state of the vehicles again (T4).
    2. It waits one or two physics steps.
    3. It moves each prop to its saved position on its platform.
-   4. It attaches each prop to its platform again (`StickyPlatformer.SetPlatform`).
+   4. The game attaches each prop to its platform again. When the prop touches the platform,
+      `PlatformingBody.OnCollisionEnter` sets `HouseNetworkTransform.stickyPlatform`.
+      `StickyPlatformer.SetPlatform` is only for players.
+
+   The `StickyPlatform` object stays at the world origin. The position relative to the platform
+   uses the transform of the platform rigidbody (`StickyPlatform.platformingBody.rb`).
 
    Test T4b on the monorail and on the gondola.
+
+   Result on 2026-11-27 for the monorail: a test aid (`PropOnPlatform`) dropped a peg tile onto a
+   monorail car. The game attached the tile to the car. Before the game load, we moved the monorail
+   car by 20 m in the Diary file. We also moved the tile on the car by 0.3 m. After the game load,
+   the car was 20 m from its old position, and the tile was at its new position on the car. The next
+   snapshot also showed the tile on the car. The host must be near the car. If the car has no
+   colliders, a prop falls through the car.
+
+   Result for the gondola: we did not do the test. In the test slot, all 64 gondola cars are at one
+   position below the ground: (133, -82, -64). When we set a speed value of 2 in the Diary file, the
+   cars did not move.
+
+   The carousel has no `StickyPlatform`. Thus, T4b does not apply to the carousel.
 <!-- [doc->REQ-PLAYER-STATE] -->
 5. **T5 — player state (#5).** Do the host first. The host has no body. Then do the clients
    with the T1 method. In each snapshot, the host saves these data of its own player:

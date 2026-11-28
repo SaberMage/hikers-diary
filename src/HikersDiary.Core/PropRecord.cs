@@ -3,9 +3,12 @@ namespace HikersDiary.Core;
 /// <summary>
 /// The saved pose of one loose prop (game class <c>Prop</c>). It has three keys, best first:
 /// <c>Prop.savablePropGuid</c> (empty if the prop has none), <c>NetworkIdentity.sceneId</c>
-/// (0 if none), and the GameObject path.
+/// (0 if none), and the GameObject path. <c>Platform</c> is the GameObject path of the moving
+/// platform (<c>StickyPlatform</c>) that the prop is on, or null. If it is not null, the position and
+/// the rotation are relative to that platform (#4).
 /// </summary>
-public sealed record PropRecord(string Guid, ulong SceneId, string Path, float[] Position, float[] Rotation);
+public sealed record PropRecord(string Guid, ulong SceneId, string Path, float[] Position, float[] Rotation,
+    string? Platform = null);
 
 /// <summary>Finds the saved record of a prop by its keys (#3).</summary>
 public sealed class PropIndex

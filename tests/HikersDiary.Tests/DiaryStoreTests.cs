@@ -44,6 +44,22 @@ public class DiaryStoreTests
         Assert.False(File.Exists(path + ".tmp"));
     }
 
+    // [unit->REQ-PLATFORM-PROPS]
+    [Fact]
+    public void PlatformOfAPropRoundTripsAndIsNullInAVersion5File()
+    {
+        string path = DiaryStore.PathFor(NewDir(), "p6");
+        DiarySave save = DiarySave.Empty("p6");
+        save.Props.Add(new PropRecord("g-2", 0, "World/Monorail/Car/Crate", new[] { 0.5f, 1f, -2f }, new[] { 0f, 0f, 0f, 1f },
+            "World/Monorail/Car"));
+        DiaryStore.Write(path, save);
+        Assert.Equal("World/Monorail/Car", Assert.Single(DiaryStore.Read(path)!.Props).Platform);
+
+        File.WriteAllText(path, "{\"Version\":5,\"SlotUid\":\"p6\",\"Bodies\":[],\"Props\":[{\"Guid\":\"g\",\"SceneId\":0," +
+            "\"Path\":\"P\",\"Position\":[0,0,0],\"Rotation\":[0,0,0,1]}]}");
+        Assert.Null(Assert.Single(DiaryStore.Read(path)!.Props).Platform);
+    }
+
     // [unit->REQ-VEHICLE-STATE]
     // [unit->REQ-TIME-OF-DAY]
     [Fact]

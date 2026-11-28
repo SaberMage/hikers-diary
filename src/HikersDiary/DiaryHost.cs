@@ -19,6 +19,8 @@ public sealed class DiaryHost : MonoBehaviour
     internal static bool MakeTestBody;
     internal static bool AutoHost;
     internal static bool FlipLookoutLight;
+    internal static string PropOnPlatform;
+    private static bool _propDropped;
     internal static string AutoJoinCode;
     internal static string AutoJoinPassword;
 
@@ -61,6 +63,10 @@ public sealed class DiaryHost : MonoBehaviour
             _testBodyMade = true;
             MakeTest(host);
         }
+
+        if (_platformPending.Count > 0 && Time.fixedTime >= _platformAt) RestorePlatformProps();
+        if (!string.IsNullOrEmpty(PropOnPlatform) && !_propDropped && Time.fixedTime >= _platformAt + 1f) DropPropOnPlatform();
+        if (_dropped != null && Time.time >= _dropCheckAt) CheckDrop();
 
         if (Time.time >= _nextSnapshot)
         {
@@ -121,6 +127,9 @@ public sealed class DiaryHost : MonoBehaviour
         RestoreProps(save.Props);
         RestoreBodies(save.Bodies, host);
         RestoreVehicles(save.Vehicles);
+        // [impl->REQ-PLATFORM-PROPS] The vehicles move to their saved state in the next physics steps.
+        // Then Update moves the props on the platforms (RestorePlatformProps).
+        _platformAt = Time.fixedTime + 2f * Time.fixedDeltaTime;
         RestoreTime(save.EnviroTicks);
         RestoreHost(save.Players, host);
     }
@@ -162,11 +171,8 @@ public sealed class DiaryHost : MonoBehaviour
             Plugin.Logger.LogWarning($"Diary: snapshot failed: {e.Message}");
             return;
         }
-        Plugin.Logger.LogInfo($"Diary: snapshot ({reason}) of slot {_slotUid}, {save.Bodies.Count} bodies, {save.Props.Count} props, {save.Vehicles.Count} vehicles, {save.Players.Count} players, time {(save.EnviroTicks == 0 ? "none" : new DateTime(save.EnviroTicks).ToString("s"))}.");
+        Plugin.Logger.LogInfo($"Diary: snapshot ({reason}) of slot {_slotUid}, {save.Bodies.Count} bodies, {save.Props.Count} props ({save.Props.Count(x => x.Platform != null)} on platforms), {save.Vehicles.Count} vehicles, {save.Players.Count} players, time {(save.EnviroTicks == 0 ? "none" : new DateTime(save.EnviroTicks).ToString("s"))}.");
     }
-
-    // This set holds the props on a moving platform that the log showed. The log shows each prop one time.
-    private static readonly HashSet<int> _platformPropsLogged = new();
 
     // A prop is loose when no home (hand, pocket, slot) holds it and no player holds it.
     private static bool IsLoose(Prop p) => p.currentHome == null && p.exclusiveHolder == null;
@@ -181,24 +187,32 @@ public sealed class DiaryHost : MonoBehaviour
             if (p == null || !IsLoose(p)) continue;
             // A body is also a prop. Its BodyRecord keeps it.
             if (p.GetComponent<Corpse>() != null) continue;
-            // Out of scope for #3: a pose relative to a moving platform. The prop stays at its start position.
-            if (p.houseNetworkTransform != null && p.houseNetworkTransform.stickyPlatform != null)
-            {
-                if (_platformPropsLogged.Add(p.GetInstanceID()))
-                    Plugin.Logger.LogInfo($"Diary: prop {PathOf(p.transform)} is on a moving platform. Not saved.");
-                continue;
-            }
             Transform t = p.transform;
             Vector3 pos = t.position;
             Quaternion r = t.rotation;
+            // [impl->REQ-PLATFORM-PROPS] A prop on a moving platform keeps its pose relative to the platform.
+            StickyPlatform sp = p.houseNetworkTransform != null ? p.houseNetworkTransform.stickyPlatform : null;
+            string platform = null;
+            if (sp != null)
+            {
+                Transform pt = Frame(sp);
+                platform = PathOf(sp.transform);
+                pos = pt.InverseTransformPoint(pos);
+                r = Quaternion.Inverse(pt.rotation) * r;
+            }
             into.Add(new PropRecord(p.savablePropGuid ?? "", p.networkIdentity != null ? p.networkIdentity.sceneId : 0,
-                PathOf(t), new[] { pos.x, pos.y, pos.z }, new[] { r.x, r.y, r.z, r.w }));
+                PathOf(t), new[] { pos.x, pos.y, pos.z }, new[] { r.x, r.y, r.z, r.w }, platform));
         }
     }
+
+    // The props on a moving platform that wait for the vehicles (T4b), and the physics time to move them.
+    private static readonly List<(Prop Prop, PropRecord Record)> _platformPending = new();
+    private static float _platformAt;
 
     // [impl->REQ-PROP-POSE]
     private static void RestoreProps(List<PropRecord> records)
     {
+        _platformPending.Clear();
         if (records.Count == 0) return;
         var index = new PropIndex(records);
         var byKey = new Dictionary<string, int> { ["guid"] = 0, ["scene"] = 0, ["path"] = 0 };
@@ -218,6 +232,7 @@ public sealed class DiaryHost : MonoBehaviour
             // ponytail: if the game wrote its save after our last snapshot (10 s window), the game save wins.
             // The game put a loose saveable prop in its start home. Remove it from that home first.
             if (p.currentHome != null) { p.ServerSetUnpinned(); unpinned++; }
+            if (rec.Platform != null) { _platformPending.Add((p, rec)); continue; }
             var pos = new Vector3(rec.Position[0], rec.Position[1], rec.Position[2]);
             var rot = new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
             // The server owns the prop transform. HouseNetworkTransform sends it to the clients.
@@ -234,6 +249,114 @@ public sealed class DiaryHost : MonoBehaviour
         int found = byKey["guid"] + byKey["scene"] + byKey["path"];
         Plugin.Logger.LogInfo($"Diary: restored {found} of {records.Count} props (guid {byKey["guid"]}, scene {byKey["scene"]}, " +
             $"path {byKey["path"]}; scene match with other path {pathDiffers}; taken from start home {unpinned}).");
+    }
+
+    /// <summary>
+    /// The transform that moves with a platform. The StickyPlatform object stays at the world origin.
+    /// The rigidbody of its PlatformingBody moves (the same transform as <c>StickyPlatformer.platformTransform</c>).
+    /// </summary>
+    private static Transform Frame(StickyPlatform sp) =>
+        sp.platformingBody != null && sp.platformingBody.rb != null ? sp.platformingBody.rb.transform : sp.transform;
+
+    /// <summary>
+    /// Moves each waiting prop to its saved pose on its platform. The vehicles have moved by now.
+    /// When the prop touches the platform, the game attaches it again
+    /// (<c>PlatformingBody.OnCollisionEnter</c> sets <c>HouseNetworkTransform.stickyPlatform</c>).
+    /// </summary>
+    // [impl->REQ-PLATFORM-PROPS]
+    private static void RestorePlatformProps()
+    {
+        var platforms = new Dictionary<string, StickyPlatform>();
+        var duplicate = new HashSet<string>();
+        foreach (StickyPlatform sp in Object.FindObjectsOfType<StickyPlatform>())
+            if (!platforms.TryAdd(PathOf(sp.transform), sp)) duplicate.Add(PathOf(sp.transform));
+        // Two platforms with the same path cannot be told apart. Do not use them.
+        foreach (string d in duplicate) platforms.Remove(d);
+        int found = 0;
+        foreach ((Prop p, PropRecord rec) in _platformPending)
+        {
+            // A home or a player that took the prop after RestoreProps (a body, the host) keeps it.
+            if (p == null || !IsLoose(p) || !platforms.TryGetValue(rec.Platform, out StickyPlatform sp)) continue;
+            Transform pt = Frame(sp);
+            Vector3 pos = pt.TransformPoint(new Vector3(rec.Position[0], rec.Position[1], rec.Position[2]));
+            Quaternion rot = pt.rotation * new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
+            p.transform.SetPositionAndRotation(pos, rot);
+            if (p.rb != null)
+            {
+                p.rb.position = pos;
+                p.rb.rotation = rot;
+                if (!p.rb.isKinematic)
+                {
+                    // The prop moves with the platform from the first step.
+                    Rigidbody prb = sp.platformingBody != null ? sp.platformingBody.rb : null;
+                    p.rb.linearVelocity = prb != null ? prb.GetPointVelocity(pos) : Vector3.zero;
+                    p.rb.angularVelocity = prb != null ? prb.angularVelocity : Vector3.zero;
+                }
+            }
+            found++;
+            Plugin.Logger.LogInfo($"Diary: prop {PathOf(p.transform)} to {pos} on {rec.Platform} (platform at {pt.position}).");
+        }
+        Plugin.Logger.LogInfo($"Diary: restored {found} of {_platformPending.Count} props on moving platforms " +
+            $"({platforms.Count} platforms, {duplicate.Count} paths with two or more platforms).");
+        _platformPending.Clear();
+    }
+
+    private static Prop _dropped;
+    private static StickyPlatform _droppedOn;
+    private static float _dropCheckAt;
+
+    private static void CheckDrop()
+    {
+        Prop p = _dropped;
+        _dropped = null;
+        if (p == null) return;
+        Transform frame = Frame(_droppedOn);
+        PlatformingBody pb = p.GetComponent<PlatformingBody>();
+        Plugin.Logger.LogInfo($"Diary: test aid: 3 s after the drop, prop at {p.transform.position}, relative {frame.InverseTransformPoint(p.transform.position)}, " +
+            $"stickyPlatform {(p.houseNetworkTransform?.stickyPlatform != null ? PathOf(p.houseNetworkTransform.stickyPlatform.transform) : "none")}, " +
+            $"PlatformingBody {(pb != null ? $"yes, connected {(pb.connectedPlatform != null ? "yes" : "no")}, contacts {pb.contacts?.Count ?? -1}" : "no")}, " +
+            $"kinematic {p.rb.isKinematic}, sleeping {p.rb.IsSleeping()}.");
+    }
+
+    /// <summary>Test aid for T4b: drops one loose prop onto a moving platform, because a single-PC test has no player input.</summary>
+    private static void DropPropOnPlatform()
+    {
+        _propDropped = true;
+        StickyPlatform target = null;
+        foreach (StickyPlatform sp in Object.FindObjectsOfType<StickyPlatform>())
+        {
+        {
+            if (!PathOf(sp.transform).Contains(PropOnPlatform)) continue;
+            Plugin.Logger.LogInfo($"Diary: test aid: platform {PathOf(sp.transform)} frame at {Frame(sp).position}.");
+            // The nearest platform to the host: physics far from the host has no colliders.
+            Vector3 h = LocalPlayer().transform.position;
+            if (target == null || (Frame(sp).position - h).sqrMagnitude < (Frame(target).position - h).sqrMagnitude) target = sp;
+        }
+        }
+        Prop prop = null;
+        var props = Prop.allProps;
+        for (int i = 0; props != null && i < props.Count && prop == null; i++)
+            if (props[i] != null && IsLoose(props[i]) && props[i].rb != null && !props[i].rb.isKinematic
+                && props[i].GetComponent<Corpse>() == null && props[i].houseNetworkTransform?.stickyPlatform == null)
+                prop = props[i];
+        if (target == null || prop == null)
+        {
+            Plugin.Logger.LogWarning($"Diary: test aid: no platform '{PropOnPlatform}' or no loose prop.");
+            return;
+        }
+        Transform frame = Frame(target);
+        Collider col = null;
+        foreach (Collider c in frame.GetComponentsInChildren<Collider>())
+            if (!c.isTrigger && (col == null || c.bounds.size.sqrMagnitude > col.bounds.size.sqrMagnitude)) col = c;
+        Vector3 at = col != null ? new Vector3(col.bounds.center.x, col.bounds.max.y + 0.3f, col.bounds.center.z)
+            : frame.position + Vector3.up;
+        prop.transform.position = at;
+        prop.rb.position = at;
+        prop.rb.linearVelocity = Vector3.zero;
+        _dropped = prop;
+        _droppedOn = target;
+        _dropCheckAt = Time.time + 3f;
+        Plugin.Logger.LogInfo($"Diary: test aid: dropped prop {PathOf(prop.transform)} onto {PathOf(target.transform)} (frame {PathOf(frame)} at {frame.position}, collider {(col != null ? PathOf(col.transform) : "none")}) at {at}.");
     }
 
     // This field keeps the last switch-state line in the log. The log shows a new line only when a state changes.

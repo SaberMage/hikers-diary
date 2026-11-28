@@ -35,6 +35,8 @@ public sealed class Plugin : BasePlugin
             "Host only: make one test body at the host position, to test the body save and restore on one computer.").Value;
         DiaryHost.FlipLookoutLight = Config.Bind("Spike", "FlipLookoutLight", false,
             "Host-only test aid: at the first snapshot, change the state of the red lookout light. Use it to make sure that the game load keeps the light state.").Value;
+        DiaryHost.PropOnPlatform = Config.Bind("Spike", "PropOnPlatform", "",
+            "Host-only test aid for T4b: after the game load, drop one loose prop onto the first moving platform whose path contains this text. Empty = off.").Value;
         DiaryHost.AutoHost = Config.Bind("Spike", "AutoHost", false,
             "Test aid: at the title menu, host the save that was played last, for 2 players.").Value;
         DiaryHost.AutoJoinCode = Config.Bind("Spike", "AutoJoinCode", "",
