@@ -531,6 +531,9 @@ public sealed class DiaryHost : MonoBehaviour
             Put(b, _scenA.transform.position + Vector3.up * 0.4f);
             Put(c, _scenGround + new Vector3(2f, 0.3f, 0f));
             Put(d, _scenGround + new Vector3(2f, 0.7f, 0f));
+            // A head tilt and turn that the load must keep.
+            host.head.headState = new Vector2(20f, -25f);
+            host.playerNetworking.NetworkheadState = host.head.headState;
             string extra = "";
             if (PathOf(_scenOn.transform).Contains("ChairLift"))
             {
@@ -568,7 +571,7 @@ public sealed class DiaryHost : MonoBehaviour
         PlayerCharacter host = LocalPlayer();
         PlayerNetworking net = host.playerNetworking;
         PlayerPose pose = net.poseReference.shellReference.isEmpty ? null : net.poseReference.shellReference.GetPose();
-        Plugin.Logger.LogInfo($"Diary: track {_trackStep}: host {Where(host.transform.position)}, sitting {net.isSitting}, pose {(pose != null ? PathOf(pose.transform) : "none")}.");
+        Plugin.Logger.LogInfo($"Diary: track {_trackStep}: host {Where(host.transform.position)}, sitting {net.isSitting}, pose {(pose != null ? PathOf(pose.transform) : "none")}, head {host.head.headState}.");
         foreach (Corpse c in Corpse.allCorpses?.ToArray() ?? Array.Empty<Corpse>())
             if (c != null) Plugin.Logger.LogInfo($"Diary: track {_trackStep}: body {c.identifier} {Where(c.transform.position)}.");
         for (int n = 2; n <= 5; n++)
@@ -769,8 +772,6 @@ public sealed class DiaryHost : MonoBehaviour
         var pos = new Vector3(rec.Position[0], rec.Position[1], rec.Position[2]);
         var rot = new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
         var head = new Vector2(rec.Head[0], rec.Head[1]);
-        host.head.headState = head;
-        net.NetworkheadState = head;
 
         var found = new List<string>();
         foreach ((string slot, PropRecord key) in rec.Items)
@@ -802,6 +803,10 @@ public sealed class DiaryHost : MonoBehaviour
     {
         PlayerNetworking net = host.playerNetworking;
         host.grease.Teleport(pos, rot);
+        // [impl->REQ-PLAYER-STATE] Set the head after the teleport. The teleport resets the head tilt.
+        var head = new Vector2(rec.Head[0], rec.Head[1]);
+        host.head.headState = head;
+        net.NetworkheadState = head;
         string pose = "none";
         if (!string.IsNullOrEmpty(rec.PosePath))
             foreach (PlayerPose pp in Object.FindObjectsOfType<PlayerPose>())
