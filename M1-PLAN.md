@@ -231,6 +231,28 @@ slideshow (revisions b and c).
    - We did not test these host actions: sit on the ground and crouch. The host on KITSUBITO has
      no player input.
 
+8. **T8 — objects in deep water (#8).** The operator added this task to M1 on 2026-11-28. At
+   the start of the session, the host moves each loose prop that a player cannot reach in deep
+   water to the nearest shore.
+
+   These are facts from the decompiled game code:
+   `WaterDepthSampleData.GetDepth(position, out patch, out isRiver)` gives the water depth at a
+   point (the game uses it for audio only). `ZonePusher` pushes the props in a `PropZone` toward
+   its `magnetPoint` for `magnetDuration`. `OceanPusher` changes the contacts of the bodies on its
+   colliders. This pushes the bodies toward its `magnetPoint`.
+
+   Steps:
+   1. In the game, log each `ZonePusher`, `PropZone` and `OceanPusher`: the colliders, the
+      magnet point and the speed.
+   2. Find the maximum depth at which a player can reach an object. Measure the depth where the
+      game stops a player in the water.
+   3. At the start of the session, make the host read the depth at each loose prop. If the depth
+      is more than the maximum depth from step 2, make the host move the prop to the nearest
+      shore. To find the nearest shore, use the magnet point of the nearest pusher.
+      Alternatively, find the nearest point that has less depth and has ground below it.
+   4. Write tests that make sure of these results: a prop in deep water goes to the shore. A prop
+      in shallow water and a prop on land do not move.
+
 ## Open questions
 
 1. Which identifier is the key: the EOS PUID or the Steam ID? T1 found the answer on
