@@ -12,7 +12,7 @@ public enum ChatCommandKind { New, Goto }
 public sealed record ChatCommand(ChatCommandKind Kind, string Target, string Password, int? Players)
 {
     /// <summary>This method returns the command in the text, or null if the text is normal chat.</summary>
-    public static ChatCommand Parse(string text, IEnumerable<string> knownTitles)
+    public static ChatCommand? Parse(string? text, IEnumerable<string>? knownTitles)
     {
         if (text == null) return null;
         string t = text.Trim();
@@ -29,25 +29,36 @@ public sealed record ChatCommand(ChatCommandKind Kind, string Target, string Pas
         if (StartsWith(t, "goto:", out rest)) return Make(ChatCommandKind.Goto, rest, null);
 
         // Rule 2: a title alone starts a switch only if it is a definite match. If two saves have this title, the title is not a definite match.
-        string match = null;
-        int count = 0;
-        foreach (string title in knownTitles ?? Enumerable.Empty<string>())
+        var titles = (knownTitles ?? Enumerable.Empty<string>()).ToList();
+        int i = MatchIndex(t, titles);
+        return i >= 0 ? new ChatCommand(ChatCommandKind.Goto, titles[i], "", null) : null;
+    }
+
+    /// <summary>
+    /// The index of the only title that matches the target (no case, no spaces at the two ends). Returns -1 if no
+    /// title matches, and -2 if two or more titles match.
+    /// </summary>
+    public static int MatchIndex(string? target, IList<string> titles)
+    {
+        string t = (target ?? "").Trim();
+        int match = -1;
+        for (int i = 0; t.Length > 0 && i < titles.Count; i++)
         {
-            if (title == null || !string.Equals(title.Trim(), t, StringComparison.OrdinalIgnoreCase)) continue;
-            match = title;
-            count++;
+            if (titles[i] == null || !string.Equals(titles[i].Trim(), t, StringComparison.OrdinalIgnoreCase)) continue;
+            if (match >= 0) return -2;
+            match = i;
         }
-        return t.Length > 0 && count == 1 ? new ChatCommand(ChatCommandKind.Goto, match, "", null) : null;
+        return match;
     }
 
     private static bool StartsWith(string t, string prefix, out string rest)
     {
         bool yes = t.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
-        rest = yes ? t.Substring(prefix.Length).TrimStart() : null;
+        rest = yes ? t.Substring(prefix.Length).TrimStart() : "";
         return yes;
     }
 
-    private static ChatCommand Make(ChatCommandKind kind, string rest, int? players)
+    private static ChatCommand? Make(ChatCommandKind kind, string rest, int? players)
     {
         int comma = rest.IndexOf(',');
         string target = (comma < 0 ? rest : rest.Substring(0, comma)).Trim();

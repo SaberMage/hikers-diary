@@ -46,7 +46,7 @@ public sealed class DiaryHost : MonoBehaviour
     private void Update()
     {
         GameStart.Step();
-        SwitchSpike.Step();
+        SaveSwitch.Step();
         if (!NetworkServer.active)
         {
             _slotUid = null;
@@ -270,7 +270,7 @@ public sealed class DiaryHost : MonoBehaviour
             save.Players.Add(SavePlayer(host));
             LogNearSeats(host);
         }
-        save = save with { EnviroTicks = EnviroTicksNow() };
+        save = save with { EnviroTicks = EnviroTicksNow(), PlayerCount = PlayersOf(PlayerCountSwapper.playerCount) };
         try
         {
             DiaryStore.Write(_path, save);
@@ -1168,10 +1168,7 @@ public sealed class DiaryHost : MonoBehaviour
         HostLatestSave();
     }
 
-    /// <summary>
-    /// Host the save that was played last, for 2 players, with the same steps as HostMenuConfirm.ActionStart
-    /// and PlayerCountMenu.ActionProceed. Returns false if the folder has no save.
-    /// </summary>
+    /// <summary>Host the save that was played last. Returns false if the folder has no save.</summary>
     internal static bool HostLatestSave()
     {
         var saves = SaveManager.GetAllSaveDatasInFolder();
@@ -1183,16 +1180,42 @@ public sealed class DiaryHost : MonoBehaviour
             Plugin.Logger.LogWarning("Host the latest save: no save in the folder. Use the menu.");
             return false;
         }
-        BaseManager.instance.saveManager.currentData = last;
-        SaveManager.WriteCurrentSaveData();
-        NetworkMinder.SetServerPassword(last.password);
-        PlayerCountSwapper.playerCount = PlayerCount.PlayerCount2;
-        // The host menu (MagicCode) makes the join code. The EOS lobby needs it.
-        EOSPrivateLobbyManager.Instance.GenerateGameCode();
-        Plugin.Logger.LogInfo($"Host the latest save: save '{last.slotName}' ({last.filenameUid}), 2 players, join code {EOSPrivateLobbyManager.Instance.CurrentLobbyCode}.");
-        NetworkMinder.StartHost();
+        HostSave(last, SavedPlayers(last.filenameUid));
         return true;
     }
+
+    /// <summary>
+    /// Host a save with the same steps as HostMenuConfirm.ActionStart and PlayerCountMenu.ActionProceed.
+    /// </summary>
+    // [impl->REQ-SAVE-SWITCH]
+    internal static void HostSave(SaveData save, int players)
+    {
+        BaseManager.instance.saveManager.currentData = save;
+        SaveManager.WriteCurrentSaveData();
+        NetworkMinder.SetServerPassword(save.password);
+        PlayerCountSwapper.playerCount = players switch { 3 => PlayerCount.PlayerCount3, 4 => PlayerCount.PlayerCount4, _ => PlayerCount.PlayerCount2 };
+        // The host menu (MagicCode) makes the join code. The EOS lobby needs it.
+        EOSPrivateLobbyManager.Instance.GenerateGameCode();
+        Plugin.Logger.LogInfo($"Host save '{save.slotName}' ({save.filenameUid}), {players} players, join code {EOSPrivateLobbyManager.Instance.CurrentLobbyCode}.");
+        NetworkMinder.StartHost();
+    }
+
+    /// <summary>The player count in the Diary file of a slot: 2, 3 or 4. It is 2 if the file has no count.</summary>
+    internal static int SavedPlayers(string slotUid)
+    {
+        try
+        {
+            int n = DiaryStore.Read(DiaryStore.PathFor(StoreDir, slotUid))?.PlayerCount ?? 0;
+            return n is >= 2 and <= 4 ? n : 2;
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogWarning($"Diary: no player count for slot {slotUid}: {e.Message}");
+            return 2;
+        }
+    }
+
+    private static int PlayersOf(PlayerCount c) => c switch { PlayerCount.PlayerCount3 => 3, PlayerCount.PlayerCount4 => 4, _ => 2 };
 
     private bool _joinSent;
     private bool _passwordSent;

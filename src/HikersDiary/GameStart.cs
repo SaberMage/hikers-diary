@@ -37,6 +37,12 @@ internal static class GameStart
     private static readonly System.Collections.Generic.List<(AudioBus bus, float volume)> _gameBuses = new();
     internal static bool OwnMenuCall;
 
+    // The switch mode (#14, T3c): after a disconnection, the same steps host the target save. The fade-out cover of
+    // the switch stays black until the first screen is black.
+    private static bool _switching;
+    private static System.Action _hostTarget;
+    private static GameObject _switchCover;
+
     private static StartPhase Phase => _seq?.Phase ?? StartPhase.Done;
 
     /// <summary>True from the first screen until the game start is complete.</summary>
@@ -46,13 +52,16 @@ internal static class GameStart
     internal static bool HoldsInput => Phase is >= StartPhase.WaitView and < StartPhase.Done;
 
     /// <summary>True while the game must not stop the intro music. The fade stops it.</summary>
-    internal static bool KeepsMusic => Phase is >= StartPhase.WaitHost and < StartPhase.Ready;
+    internal static bool KeepsMusic => !_switching && Phase is >= StartPhase.WaitHost and < StartPhase.Ready;
 
     /// <summary>Call it in each frame.</summary>
     internal static void Step()
     {
-        if (!Enabled) return;
-        _seq ??= new StartSequence(FadeSeconds);
+        if (_seq == null)
+        {
+            if (!Enabled) return;
+            _seq = new StartSequence(FadeSeconds);
+        }
         if (_seq.Phase == StartPhase.Done) return;
 
         float now = Time.time;
@@ -109,9 +118,15 @@ internal static class GameStart
         {
             case StartPhase.WaitHost:
                 StyleFirstScreen();
+                if (_switching)
+                {
+                    _music?.Stop();
+                    EndSwitchCover();
+                }
                 break;
             case StartPhase.Hosting:
-                if (!DiaryHost.HostLatestSave()) Stop();
+                if (_switching) _hostTarget();
+                else if (!DiaryHost.HostLatestSave()) Stop();
                 break;
             case StartPhase.WaitPlayer:
                 // The game unloads BaseScene and its menus when the game scene loads. Keep the canvas.
@@ -134,7 +149,10 @@ internal static class GameStart
                 break;
             case StartPhase.Fade:
                 SetMeters(true);
-                _music?._micSelectASC?.FadeOut(FadeSeconds);
+                if (!_switching) _music?._micSelectASC?.FadeOut(FadeSeconds);
+                break;
+            case StartPhase.Ready when _switching:
+                Continue(); // a switch does not show the continue button
                 break;
             case StartPhase.Ready:
                 SetGameSound(1f);
@@ -268,18 +286,45 @@ internal static class GameStart
         _canvas = null;
         _backdrop = null;
         _seq.End();
+        EndSwitchCover();
+        _switching = false;
+        _hostTarget = null;
+    }
+
+    /// <summary>
+    /// Start the steps of the game start again after a disconnection (#14, T3c). The host step calls
+    /// <paramref name="hostTarget"/>. The <paramref name="cover"/> stays black until the first screen is black.
+    /// </summary>
+    // [impl->REQ-SAVE-SWITCH]
+    internal static void BeginSwitch(System.Action hostTarget, GameObject cover)
+    {
+        _seq = new StartSequence(FadeSeconds);
+        _switching = true;
+        _hostTarget = hostTarget;
+        _switchCover = cover;
+    }
+
+    // The first screen is black now (or the switch stopped): remove the fade-out cover and give the audio back. The
+    // game buses stay at zero until the fade-in.
+    private static void EndSwitchCover()
+    {
+        if (_switchCover == null) return;
+        Object.Destroy(_switchCover);
+        _switchCover = null;
+        AudioListener.volume = 1f;
     }
 
     // In the first frame of the first screen: a black image behind it, white text and lines, no continue button,
     // and the canvas above all canvases of the game.
     private static void StyleFirstScreen()
     {
+        _colors.Clear();
         _canvas = _mic.GetComponentInParent<Canvas>()?.rootCanvas;
         _music = Object.FindObjectOfType<MenuMusicPlayer>();
         if (_canvas == null)
         {
             Plugin.Logger.LogWarning("Diary: game start found no canvas for the first screen.");
-            _seq.End();
+            Stop();
             return;
         }
         _canvas.sortingOrder = SortingOrder;

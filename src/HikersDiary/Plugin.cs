@@ -61,8 +61,12 @@ public sealed class Plugin : BasePlugin
             "Test aid for a second client: at the title menu, join the session with this join code.").Value.Trim();
         DiaryHost.AutoJoinPassword = Config.Bind("Spike", "AutoJoinPassword", "",
             "Test aid for a second client: the password of the session in AutoJoinCode.").Value;
-        SwitchSpike.Enabled = Config.Bind("Spike", "SwitchSpike", false,
-            "Test aid for T3b (#14): log the chat, the sit and sleep states and the scenes. After the continue button, open the chat, shorten the sleep timeout, disconnect and host the latest save again.").Value;
+        SaveSwitch.Enabled = Config.Bind("Switch", "SaveSwitch", true,
+            "The new: and goto: chat commands (#14). Type a command, sit and sleep: then the other save loads. False = normal chat only.").Value;
+        SaveSwitch.SleepSeconds = Config.Bind("Switch", "SleepSeconds", 5f,
+            "The sleep timeout in seconds while the player sits with a command.").Value;
+        SaveSwitch.TestCommand = Config.Bind("Spike", "SwitchCommand", "",
+            "Test aid for T3c (#14): 10 s after the gameplay starts, send this text through the chat and sit. Empty = off.").Value.Trim();
         ClassInjector.RegisterTypeInIl2Cpp<DiaryHost>();
         var driver = new GameObject("HikersDiary") { hideFlags = HideFlags.HideAndDontSave };
         Object.DontDestroyOnLoad(driver);
@@ -70,11 +74,12 @@ public sealed class Plugin : BasePlugin
         var harmony = new HarmonyLib.Harmony(Guid);
         harmony.PatchAll(typeof(SessionStopPatches));
         harmony.PatchAll(typeof(BodyMatchLog));
-        if (GameStart.Enabled) harmony.PatchAll(typeof(GameStartPatches));
+        // The switch uses the steps of the game start after the disconnection.
+        if (GameStart.Enabled || SaveSwitch.Enabled) harmony.PatchAll(typeof(GameStartPatches));
         ColorPatches.Open(DiaryHost.StoreDir);
         harmony.PatchAll(typeof(ColorPatches));
         harmony.PatchAll(typeof(CarHoldPatch));
-        if (SwitchSpike.Enabled) harmony.PatchAll(typeof(SwitchSpikePatches));
+        if (SaveSwitch.Enabled) harmony.PatchAll(typeof(SaveSwitchPatches));
         Logger.LogInfo($"Diary: {harmony.GetPatchedMethods().Count()} hooks installed.");
         Logger.LogInfo($"Diary armed. Store: {DiaryHost.StoreDir}");
     }

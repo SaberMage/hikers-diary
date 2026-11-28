@@ -34,4 +34,15 @@ public class ChatCommandTests
     {
         Assert.Null(ChatCommand.Parse(text, Saves));
     }
+
+    // [unit->REQ-SAVE-SWITCH]
+    [Theory]
+    [InlineData(" lake ", 1)]
+    [InlineData("Twin", -2)]
+    [InlineData("Nowhere", -1)]
+    [InlineData("", -1)]
+    public void MatchIndexFindsTheOnlyTitle(string target, int index)
+    {
+        Assert.Equal(index, ChatCommand.MatchIndex(target, new[] { "Peak", "Lake", "Twin", "twin " }));
+    }
 }

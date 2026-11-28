@@ -183,6 +183,53 @@ These items are not in the scope: the join at start, the session history walk an
       the target save. For `new:`, first make the save, or change its player count and its
       password. Then use the T2 cover. Then increase the view and the audio again (fade in).
       The player wakes at the saved pose. The continue button is not necessary for a switch.
+      Design (2026-11-28):
+      - The chat: a prefix on `PlayerTexter.TrySendTextChat` gives the text to `ChatCommand.Parse`
+        with the titles of the local saves. If the result is a command, the prefix stops the
+        message (the T3b steps). A new command replaces the previous command.
+      - The target: a `goto:` command must have an exact match to the title of one local save.
+        If it has no match, the mod writes a log line and does not start the switch. T3d adds the
+        friend sessions. A `new:` command with no match makes a new save. If a `new:` command with a
+        match gives a player count or a password, the mod changes them in that save.
+        If two or more saves have the title, the mod writes a log line and does not start the
+        switch.
+      - A new save: do the steps of `HostMenuConfirm.ActionStart` (Cpp2IL body). Make a
+        `SaveData` with empty lists. Set `filenameUid` to the first 16 characters of a new GUID
+        (format `N`). Set `slotName` and `password`.
+      - The player count: the diary file keeps it (`DiarySave.PlayerCount`, version 8). The
+        snapshot writes `PlayerCountSwapper.playerCount`. When the mod hosts a save, it reads the
+        count from the diary file. The default is 2 players. T2 (`HostLatestSave`) uses the same
+        step.
+      - `SwitchSequence` (Core, unit tests) holds the order: `Idle`, `Pending`, `FadeOut`,
+        `Disconnect`. In `Pending`, the mod uses the short timeout while the player sits. If the
+        player stands after the player sits, the command stops. When the sleep starts while the player sits,
+        the fade-out starts. If the player wakes during the fade-out, the switch stops and the
+        view and the audio return. At the end of the fade-out, the phase is `Disconnect`.
+      - The fade-out: a new canvas (`ScreenSpaceOverlay`, sort order 32000, in
+        `DontDestroyOnLoad`) has a black image. Its alpha increases from 0 to 1 during
+        `Start.FadeSeconds`. `AudioListener.volume` decreases from 1 to 0 at the same time.
+      - The disconnection: call `DisconnectConfirmMenu.ActionDisconnect()`. Then start the T2
+        sequence again in the switch mode, with the target save. The switch mode has these
+        differences:
+        - The intro music stops at the first screen. The fade-in does not change the music.
+        - When the first screen is black, remove the fade-out canvas. Then set
+          `AudioListener.volume` to 1. The game buses stay at zero until the fade-in.
+        - The host step hosts the target save, not the latest save.
+        - At the end of the fade, do the continue steps immediately. The game does not show
+          the continue button.
+      - Config: `Switch.SaveSwitch` (default true) and `Switch.SleepSeconds` (default 5).
+      - Test aid: `Spike.SwitchCommand` (empty = off). 10 s after the gameplay starts, the mod
+        sends this text through `TrySendTextChat` and calls `PlayerSitter.SetSittingLocal(true)`.
+      Result (2026-11-28, flat screen, test aid, `Start.GameStart` false and `Spike.AutoHost` true, 3 runs):
+      - `PlayerSitter.SetSittingLocal(true)` makes the player sit with no seat. `isSittingLocal` is
+        then true.
+      - With a sit, the sleep started 5 s after the command. The fade-out took 5 s. The view of the
+        target save came back 11 s after the disconnection, at the saved pose.
+      - `goto: ModTests` hosted the same save again. `new: 3p: SwitchTest, pw1` made a new save and
+        hosted it for 3 players. The next game start hosted `SwitchTest` for 3 players, from the
+        diary file. Then `goto: ModTests` hosted `ModTests` for 2 players.
+      - The log has no exceptions. The chat did not send the commands.
+      - The operator must examine the view and the audio of the fade-out and the fade-in.
    4. **T3d — join a friend session.** A `goto:` command gives the title of a friend session or
       a session ID. Join it with the given password, or with the most recent password for that
       session. If the mod cannot join the session and there is no password, host the local

@@ -8,16 +8,18 @@ namespace HikersDiary.Core;
 /// missing in the file (an older version) as an empty list.
 /// </summary>
 public sealed record DiarySave(int Version, string SlotUid, List<BodyRecord> Bodies, List<PropRecord> Props,
-    List<VehicleRecord>? Vehicles = null, long EnviroTicks = 0, List<PlayerRecord>? Players = null)
+    List<VehicleRecord>? Vehicles = null, long EnviroTicks = 0, List<PlayerRecord>? Players = null,
+    int PlayerCount = 0)
 {
     /// <summary>
     /// Version 2 added <see cref="Props"/>. Version 3 added <see cref="Vehicles"/> and
     /// <see cref="EnviroTicks"/> (the Enviro date and time as <c>DateTime</c> ticks. The value is 0
     /// if the host did not save the time). Version 4 added <see cref="Players"/>. Version 5 added
     /// <see cref="BodyRecord.Items"/>. Version 6 added <see cref="PropRecord.Platform"/>. Version 7 added <see cref="VehicleRecord.LoadedCars"/>,
-    /// <see cref="BodyRecord.Platform"/> and <see cref="PlayerRecord.Platform"/>.
+    /// <see cref="BodyRecord.Platform"/> and <see cref="PlayerRecord.Platform"/>. Version 8 added <see cref="PlayerCount"/>
+    /// (2, 3 or 4. The value is 0 if the host did not save it: then the mod hosts for 2 players).
     /// </summary>
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
 
     public static DiarySave Empty(string slotUid) =>
         new(CurrentVersion, slotUid, new List<BodyRecord>(), new List<PropRecord>(), new List<VehicleRecord>(),

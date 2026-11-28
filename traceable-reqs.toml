@@ -83,7 +83,7 @@ required_stages = ["doc", "impl", "unit"]
 [[requirements]]
 id = "REQ-SAVE-SWITCH"
 title = "A player sits and types a new: or goto: command in the chat. The sleep timeout becomes shorter. When the player sleeps, the view and the audio decrease to zero. Then the target save loads. The view and the audio increase again, and the player wakes at the saved pose (#14)"
-required_stages = ["doc"]
+required_stages = ["doc", "impl", "unit"]
 
 [[requirements]]
 id = "REQ-CHAT-COMMAND"
