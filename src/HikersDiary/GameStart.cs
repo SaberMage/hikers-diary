@@ -70,7 +70,7 @@ internal static class GameStart
         PlayerCharacter local = before is StartPhase.WaitPlayer or StartPhase.WaitView ? DiaryHost.LocalPlayer() : null;
         bool playerReady = local != null && local.sleeper != null && WorldMenuManager.instance != null;
         bool viewReady = playerReady && PlayerCameraOn();
-        StartPhase after = _seq.Step(now, _mic != null, NetworkServer.active, playerReady, viewReady);
+        StartPhase after = _seq.Step(now, _mic != null, NetworkServer.active || SwitchJoin.Started, playerReady, viewReady);
 
         if (after != before)
         {
@@ -118,21 +118,16 @@ internal static class GameStart
         {
             case StartPhase.WaitHost:
                 StyleFirstScreen();
-                if (_switching)
-                {
-                    _music?.Stop();
-                    EndSwitchCover();
-                }
+                if (_switching) _music?.Stop();
                 break;
             case StartPhase.Hosting:
                 if (_switching) _hostTarget();
                 else if (!DiaryHost.HostLatestSave()) Stop();
                 break;
             case StartPhase.WaitPlayer:
-                // The game unloads BaseScene and its menus when the game scene loads. Keep the canvas.
-                _canvas.transform.SetParent(null, true);
-                Object.DontDestroyOnLoad(_canvas.gameObject);
-                SetMeters(false); // the meter throws while the game scene loads
+                KeepCanvas();
+                // The session started. The menus of a join are gone: the first screen is the black cover now.
+                EndSwitchCover();
                 break;
             case StartPhase.WaitView:
                 // The game must not enter its sleep state while the first screen shows: a new sleep state plays the
@@ -271,9 +266,27 @@ internal static class GameStart
         if (t != null && t.gameObject.activeSelf != on) t.gameObject.SetActive(on);
     }
 
-    private static void Stop()
+    /// <summary>The game unloads BaseScene and its menus when the game scene loads. Keep the canvas of the first screen.</summary>
+    internal static void KeepCanvas()
     {
-        if (_canvas != null && _canvas.gameObject.scene.name == "DontDestroyOnLoad") Object.Destroy(_canvas.gameObject);
+        if (_canvas == null || _canvas.gameObject.scene.name == "DontDestroyOnLoad") return;
+        _canvas.transform.SetParent(null, true);
+        Object.DontDestroyOnLoad(_canvas.gameObject);
+        SetMeters(false); // the meter throws while the game scene loads
+    }
+
+    internal static void Stop()
+    {
+        bool kept = _canvas != null && _canvas.gameObject.scene.name == "DontDestroyOnLoad";
+        var baseScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName("BaseScene");
+        if (kept && baseScene.isLoaded)
+        {
+            // A join failed and there is no save to host: give the canvas back to the menus.
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(_canvas.gameObject, baseScene);
+            SetMeters(true);
+            kept = false;
+        }
+        if (kept) Object.Destroy(_canvas.gameObject);
         else if (_mic != null)
         {
             // No save: the first screen and the menus work as usual.

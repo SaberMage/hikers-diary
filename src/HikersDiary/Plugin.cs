@@ -67,8 +67,6 @@ public sealed class Plugin : BasePlugin
             "The sleep timeout in seconds while the player sits with a command.").Value;
         SaveSwitch.TestCommand = Config.Bind("Spike", "SwitchCommand", "",
             "Test aid for T3c (#14): 10 s after the gameplay starts, send this text through the chat and sit. Empty = off.").Value.Trim();
-        LobbySpike.SearchText = Config.Bind("Spike", "LobbySearch", "",
-            "Test aid for T3d (#14): 10 s after the gameplay starts, log the friend sessions, the own lobby and an EOS lobby search for this text (a save title or a join code). Empty = off.").Value.Trim();
         ClassInjector.RegisterTypeInIl2Cpp<DiaryHost>();
         var driver = new GameObject("HikersDiary") { hideFlags = HideFlags.HideAndDontSave };
         Object.DontDestroyOnLoad(driver);
@@ -81,8 +79,12 @@ public sealed class Plugin : BasePlugin
         ColorPatches.Open(DiaryHost.StoreDir);
         harmony.PatchAll(typeof(ColorPatches));
         harmony.PatchAll(typeof(CarHoldPatch));
-        if (SaveSwitch.Enabled) harmony.PatchAll(typeof(SaveSwitchPatches));
-        if (LobbySpike.SearchText.Length > 0 || DiaryHost.AutoJoinCode.Length > 0) harmony.PatchAll(typeof(LobbySpikeErrorLog));
+        if (SaveSwitch.Enabled)
+        {
+            SaveSwitch.OpenPasswords(DiaryHost.StoreDir);
+            harmony.PatchAll(typeof(SaveSwitchPatches));
+            harmony.PatchAll(typeof(SwitchJoinErrorPatch));
+        }
         Logger.LogInfo($"Diary: {harmony.GetPatchedMethods().Count()} hooks installed.");
         Logger.LogInfo($"Diary armed. Store: {DiaryHost.StoreDir}");
     }

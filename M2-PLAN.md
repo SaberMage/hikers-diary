@@ -322,6 +322,62 @@ These items are not in the scope: the join at start, the session history walk an
          these: the target (a local save, a friend session or a lobby search result), the password
          memory (the most recent password of each session, in the diary folder), the join from the
          first screen in the switch mode, and the change to the local save if the join fails.
+         <!-- [doc->REQ-FRIEND-JOIN] -->
+         Design (2026-11-28). The requirement is `REQ-FRIEND-JOIN`.
+         - The target (Core `SwitchTarget.Resolve`, unit tests). The mod examines a `goto:` target
+           in this order: the title of one friend session (`CurrentLobbies.roomName`), the title of
+           one local save, and a session ID (`EOSPrivateLobbyManager.IsValidCode`, in upper case).
+           If two friend sessions or two local saves have the title, the target is not valid. A
+           `new:` command uses only the local saves (T3c). For rule 2, the parser gets the local
+           titles and the titles of the friend sessions that are not also local titles.
+         - The lobby check. When a join command arrives, the mod starts an EOS search by lobby ID
+           (`EosLobby`, the C API of T3d-1). The result gives `WORLD_NAME`. The fade-out does not
+           go to `Disconnect` until the mod has the result. After 10 s, the mod uses "no lobby".
+         - The local copy is the local save that has the title of the session. If the search finds
+           no lobby and the command has no password, the mod hosts the local copy. If the search
+           finds no lobby and there is no local copy (or the command has a password), the switch
+           stops at the end of the fade-out. The cover goes away, the player wakes and stands.
+         - The password is the password of the command. If the command has no password, the mod
+           uses the most recent password of the session ID or of the title (Core `PasswordBook`,
+           file `passwords.json` in the diary folder, unit tests). When a join is successful, the
+           mod writes the password for the title and for the session ID.
+         - The join. After the disconnection, the T2 steps start again in the switch mode. The host
+           step calls `NetworkMinder.SetServerPassword` and `JoinMenu.ConnectTo(code)`, and it
+           moves the `MainMenu` canvas to `DontDestroyOnLoad`. When `PasswordMenu` shows, the mod
+           submits the password. The session starts when the local player exists. In the switch
+           mode, the fade-out cover (sort order 32001) stays until the session starts. Thus the
+           menus of the join are not visible.
+         - A failed join. During the join, a prefix on `MainMenuManager.ShowErrorMenu` stops the
+           error menu. A join that takes more than 30 s also fails. Then the mod stops the client.
+           If the command has no password and a local copy exists, the mod hosts the local copy.
+           If not, it hosts the latest save. If there is no save, the first screen and the menus
+           of the game come back.
+         - Remove `LobbySpike`. Keep `EosLobby` with the search by lobby ID only.
+         - Test aid: `Spike.SwitchCommand` (T3c) with `goto: <code>`. Tests: a good code, a bad
+           code, a good code with a bad password, and a friend title.
+         Result (2026-11-28, flat screen, HFENDULEAM joins KITSUBITO, `Start.GameStart` false and
+         `Spike.AutoHost` true):
+         - The lobby check took 0.2 s to 0.25 s. It gave the title `aoieu` for the code `HY4HUE`.
+           A bad code (`Z9Z9Z9`) gave result 18 (not found) and 0 lobbies.
+         - `goto: hy4hue` with no password: the password menu showed 2.4 s after the join call. The
+           empty password gave `NoConnectWrongPassword`. There was no local copy. Thus the mod
+           hosted the latest save. Two bugs were found and fixed:
+           - A client stop in the prefix on `ShowErrorMenu` caused a `NullReferenceException` in
+             `NetworkAuthenticator.ClientReject`. The prefix is in the auth handler of the game. Now
+             the mod stops the client only if it is active 1 s after the failure.
+           - The game leaves the joined lobby approximately 1 s to 2 s after the failure. The end of the
+             leave sets `currentLobbyCode` to null. That occurred after the fallback host made its
+             code. Then the host lobby had no code. The leave callback sets the field inline, thus
+             no method can be patched. Now, for 15 s after the fallback host, the mod puts the code
+             back if it is empty. Then the host lobby had its code (`Hosting lobby RVWHPU`).
+         - `goto: HY4HUE, a`: the join was successful 4.5 s after the join call. `passwords.json`
+           had `code:HY4HUE` and `title:aoieu`. KITSUBITO saw the client.
+         - `goto: aoieu` (a friend title, no password): the mod used the password from the memory.
+           The join was successful 4.7 s after the join call.
+         - `goto: Z9Z9Z9`: no lobby and no local copy. The player woke and stood at the end of the
+           fade-out (1 s later: sit false, sleep false, timeout 30 s).
+         - Not tested: the local copy after a failed join. The operator must examine the view of
+           the join (the cover stays black until the session starts).
 
    Test: the agent does each test with `$TEMP/gears/run-game.sh` and examines the logs. Then
    the operator does the acceptance test of #14 on a flat screen.

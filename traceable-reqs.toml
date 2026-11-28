@@ -89,3 +89,8 @@ required_stages = ["doc", "impl", "unit"]
 id = "REQ-CHAT-COMMAND"
 title = "The mod parses the new: and goto: chat commands. Other chat text starts a switch only if it is a definite match to the title of one local save. Other chat text never starts a switch (#14, rule 2)"
 required_stages = ["doc", "impl", "unit"]
+
+[[requirements]]
+id = "REQ-FRIEND-JOIN"
+title = "A goto: command with the title of a friend session or a session ID joins that session, with the password of the command or the most recent password. If the session is not there or the join fails, and the command has no password, the local copy loads. If there is no local copy, the player wakes and stands before the fade-out is complete (#14)"
+required_stages = ["doc", "impl", "unit"]

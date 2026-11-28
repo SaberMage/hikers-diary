@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using HarmonyLib;
 using HikersDiary.Core;
+using Mirror;
 using UnityEngine;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
@@ -24,10 +25,47 @@ internal static class SaveSwitch
     private static GameObject _coverGo;
     private static Image _cover;
     private static string _lastState = "";
+    private static float _wakeCheckAt = -1f;
+
+    // One log line 1 s after a wake with no target: the player must stand and must not sleep.
+    private static void WakeCheck()
+    {
+        if (_wakeCheckAt < 0f || Time.time < _wakeCheckAt) return;
+        _wakeCheckAt = -1f;
+        PlayerCharacter p = DiaryHost.LocalPlayer();
+        Plugin.Logger.LogInfo($"Diary: switch after the wake: sit {p?.sitter?.isSittingLocal}, sleep {p?.sleeper?.combinedIsSleeping}, timeout {p?.sleeper?.timeTilSleep}.");
+    }
+
+    // A goto: command to a session (T3d): the target, and the result of the lobby check (null = no result yet).
+    private const float LookupSeconds = 10f;
+    private static SwitchTarget _join;
+    private static bool? _found;
+    private static float _lookupAt;
+    private static int _lookup;
+    private static PasswordBook _passwords = new();
+    private static string _passwordPath;
+
+    internal static void OpenPasswords(string storeDir)
+    {
+        _passwordPath = System.IO.Path.Combine(storeDir, "passwords.json");
+        _passwords = PasswordBook.Read(_passwordPath);
+    }
+
+    // [impl->REQ-FRIEND-JOIN]
+    internal static void KeepPassword(string code, string title, string password)
+    {
+        if (!_passwords.Set(code, title, password)) return;
+        try { _passwords.Write(_passwordPath); }
+        catch (System.Exception e) { Plugin.Logger.LogWarning($"Diary: cannot write the passwords: {e.Message}"); }
+    }
+
+    private static bool TargetReady => _join == null || _found != null || Time.time - _lookupAt >= LookupSeconds;
 
     internal static void Step()
     {
         if (!Enabled) return;
+        SwitchJoin.Step();
+        WakeCheck();
         _seq ??= new SwitchSequence(GameStart.FadeSeconds);
         TestStep();
         if (_seq.Phase == SwitchPhase.Idle) return;
@@ -40,14 +78,14 @@ internal static class SaveSwitch
         if (state != _lastState) Plugin.Logger.LogInfo($"Diary: switch {_seq.Phase}: {_lastState = state} at {now:0.00} s.");
 
         SwitchPhase before = _seq.Phase;
-        SwitchPhase after = _seq.Step(now, sitting, sleeping);
+        SwitchPhase after = _seq.Step(now, sitting, sleeping, TargetReady);
         SetTimeout(local.sleeper, _seq.ShortTimeout);
         if (after != before)
         {
             Plugin.Logger.LogInfo($"Diary: switch {before} -> {after} at {now:0.00} s.");
             if (after == SwitchPhase.FadeOut) MakeCover();
             else if (after == SwitchPhase.Idle) RemoveCover();
-            else if (after == SwitchPhase.Disconnect) Disconnect();
+            else if (after == SwitchPhase.Disconnect) Disconnect(local);
         }
         if (_cover != null)
         {
@@ -60,9 +98,22 @@ internal static class SaveSwitch
     /// <summary>A command from the local chat. Returns false if the target is not valid. Then the switch does not start.</summary>
     internal static bool Arm(ChatCommand cmd)
     {
-        if (Resolve(cmd, false, out _, out _) == null) return false;
+        SwitchTarget join = null;
+        if (cmd.Kind == ChatCommandKind.Goto)
+        {
+            SwitchTarget t = ResolveGoto(cmd.Target);
+            if (t.Kind is TargetKind.None or TargetKind.Ambiguous)
+            {
+                Plugin.Logger.LogWarning($"Diary: switch command not done: '{cmd.Target}' is {(t.Kind == TargetKind.None ? "not a save, a friend session or a session ID" : "the title of two or more saves or friend sessions")}.");
+                return false;
+            }
+            if (t.Kind == TargetKind.Join) join = t;
+        }
+        else if (Resolve(cmd, false, out _, out _) == null) return false;
         _seq ??= new SwitchSequence(GameStart.FadeSeconds);
         _seq.Arm(cmd);
+        _join = join;
+        if (join != null) StartLookup(join);
         Plugin.Logger.LogInfo($"Diary: switch command {cmd.Kind} '{cmd.Target}' ({cmd.Players?.ToString() ?? "no"} player count). Sit and sleep to switch.");
         return true;
     }
@@ -82,9 +133,69 @@ internal static class SaveSwitch
         }
     }
 
-    private static void Disconnect()
+    // [impl->REQ-FRIEND-JOIN]
+    private static SwitchTarget ResolveGoto(string target) =>
+        SwitchTarget.Resolve(target, Titles(SaveManager.GetAllSaveDatasInFolder()), Friends(), IsCode);
+
+    private static bool IsCode(string code) => EOSPrivateLobbyManager.IsValidCode(code, 6);
+
+    /// <summary>The friend sessions of the game (rich presence). The list is also there during the gameplay (T3d-1).</summary>
+    internal static List<FriendSession> Friends()
+    {
+        var list = new List<FriendSession>();
+        try
+        {
+            var lobbies = FriendGamePresenceManager.Presence?.CurrentLobbies?.TryCast<Il2CppSystem.Collections.Generic.List<BigWalkLobbyData>>();
+            for (int i = 0; lobbies != null && i < lobbies.Count; i++)
+                if (!string.IsNullOrEmpty(lobbies[i].lobbyCode) && !string.IsNullOrEmpty(lobbies[i].roomName))
+                    list.Add(new FriendSession(lobbies[i].lobbyCode, lobbies[i].roomName));
+        }
+        catch (System.Exception e) { Plugin.Logger.LogWarning($"Diary: no friend sessions: {e.Message}"); }
+        return list;
+    }
+
+    // The lobby check of a join: does the session exist, and what is its title? A new command makes an old result stale.
+    // [impl->REQ-FRIEND-JOIN]
+    private static void StartLookup(SwitchTarget t)
+    {
+        int id = ++_lookup;
+        _found = null;
+        _lookupAt = Time.time;
+        bool started = EosLobby.FindById(t.Code, (found, title) =>
+        {
+            if (id != _lookup) return;
+            _found = found;
+            if (title.Length > 0) _join = new SwitchTarget(_join.Kind, _join.Index, _join.Code, title); // no "with": Nullable is off here
+        });
+        if (!started) _found = false;
+    }
+
+    private static void Disconnect(PlayerCharacter local)
     {
         ChatCommand cmd = _seq.Command;
+        System.Action host = () => HostTarget(cmd);
+        // [impl->REQ-FRIEND-JOIN]
+        if (_join != null)
+        {
+            SwitchTarget join = _join;
+            bool typed = cmd.Password.Length > 0;
+            if (_found == true)
+            {
+                string pw = typed ? cmd.Password : _passwords.Get(join.Code, join.Title);
+                host = () => SwitchJoin.Start(join, pw, () => { if (typed || !HostCopy(join.Title)) HostLatestOrMenus(); });
+            }
+            else if (!typed && HasCopy(join.Title))
+            {
+                Plugin.Logger.LogInfo($"Diary: switch found no lobby {join.Code}. Host the local copy '{join.Title}'.");
+                host = () => { if (!HostCopy(join.Title)) HostLatestOrMenus(); };
+            }
+            else
+            {
+                Plugin.Logger.LogWarning($"Diary: switch found no lobby {join.Code} ({(_found == null ? "no result" : "no lobby")}), and {(typed ? "the command has a password" : "there is no local copy")}. The player wakes.");
+                WakeAndStand(local);
+                return;
+            }
+        }
         _seq.Cancel();
         _initialTimeout = -1f; // the player of this session goes away with its timeout
         var menus = Resources.FindObjectsOfTypeAll<DisconnectConfirmMenu>();
@@ -94,7 +205,7 @@ internal static class SaveSwitch
             RemoveCover();
             return;
         }
-        GameStart.BeginSwitch(() => HostTarget(cmd), _coverGo);
+        GameStart.BeginSwitch(host, _coverGo);
         _coverGo = null;
         _cover = null;
         Plugin.Logger.LogInfo("Diary: switch disconnects.");
@@ -111,6 +222,40 @@ internal static class SaveSwitch
             Plugin.Logger.LogWarning($"Diary: switch target not valid after the disconnection ({why}). Host the latest save.");
             DiaryHost.HostLatestSave();
         }
+    }
+
+    // No session for the switch: the cover goes away, and the player wakes and stands.
+    // [impl->REQ-FRIEND-JOIN]
+    private static void WakeAndStand(PlayerCharacter local)
+    {
+        _seq.Cancel();
+        RemoveCover();
+        SetTimeout(local.sleeper, false);
+        local.sleeper.RecordAction();
+        local.sitter.SetSittingLocal(false);
+        _wakeCheckAt = Time.time + 1f;
+    }
+
+    private static int CopyIndex(Il2CppSystem.Collections.Generic.List<SaveData> saves, string title) =>
+        string.IsNullOrEmpty(title) ? -1 : ChatCommand.MatchIndex(title, Titles(saves));
+
+    private static bool HasCopy(string title) => CopyIndex(SaveManager.GetAllSaveDatasInFolder(), title) >= 0;
+
+    /// <summary>Host the local copy of a session: the only local save with its title. Returns false if there is none.</summary>
+    private static bool HostCopy(string title)
+    {
+        var saves = SaveManager.GetAllSaveDatasInFolder();
+        int i = CopyIndex(saves, title);
+        if (i < 0) return false;
+        DiaryHost.HostSave(saves[i], DiaryHost.SavedPlayers(saves[i].filenameUid));
+        return true;
+    }
+
+    private static void HostLatestOrMenus()
+    {
+        if (DiaryHost.HostLatestSave()) return;
+        Plugin.Logger.LogWarning("Diary: switch has no save to host. The menus of the game come back.");
+        GameStart.Stop();
     }
 
     /// <summary>
@@ -167,7 +312,7 @@ internal static class SaveSwitch
         Object.DontDestroyOnLoad(_coverGo);
         var canvas = _coverGo.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 32000;
+        canvas.sortingOrder = 32001; // above the first screen: the menus of a join are not visible
         var img = new GameObject("Black");
         img.transform.SetParent(_coverGo.transform, false);
         var rect = img.AddComponent<RectTransform>();
@@ -219,7 +364,7 @@ internal static class SaveSwitchPatches
     {
         string text = TextChatInput.instance != null ? TextChatInput.instance.GetString() : null;
         var saves = SaveManager.GetAllSaveDatasInFolder();
-        List<string> titles = SaveSwitch.Titles(saves);
+        List<string> titles = SwitchTarget.ChatTitles(SaveSwitch.Titles(saves), SaveSwitch.Friends());
         ChatCommand cmd = ChatCommand.Parse(text, titles);
         if (cmd == null) return true;
         // The cancel of the game closes the input. The game does not send the message (T3b).

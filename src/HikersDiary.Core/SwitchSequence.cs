@@ -41,8 +41,11 @@ public sealed class SwitchSequence
         _sat = false;
     }
 
-    /// <summary>Go to the next phase if its condition is true. Returns the phase after the step.</summary>
-    public SwitchPhase Step(float now, bool sitting, bool sleeping)
+    /// <summary>
+    /// Go to the next phase if its condition is true. Returns the phase after the step. The fade-out stays at full
+    /// black until <paramref name="targetReady"/> is true (the lobby check of a join, T3d).
+    /// </summary>
+    public SwitchPhase Step(float now, bool sitting, bool sleeping, bool targetReady = true)
     {
         switch (Phase)
         {
@@ -53,7 +56,8 @@ public sealed class SwitchSequence
                 break;
             case SwitchPhase.FadeOut:
                 if (!sleeping || !sitting) Cancel(); // the player woke
-                else if (now - _at >= _fadeSeconds) Phase = SwitchPhase.Disconnect;
+                // [impl->REQ-FRIEND-JOIN]
+                else if (now - _at >= _fadeSeconds && targetReady) Phase = SwitchPhase.Disconnect;
                 break;
         }
         // The short timeout stays until the disconnection: the initial timeout ends the sleep of a player who sleeps.
