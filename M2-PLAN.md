@@ -73,10 +73,10 @@ These items are not in the scope: the join at start, the session history walk an
       return the colors to their initial values. Then show the continue button.
    3. When the host starts, move the `MainMenu` canvas to `DontDestroyOnLoad`. Disable
       `MenuVolumeMeter` until the game view is ready.
-   4. When the local player exists, start the drowsy view without the snore (see T1). The game
-      does not start the sleep state in the first 30 s after the game start. Thus, add a patch
-      on `PlayerSleeper.Update`. The patch must keep the full drowsy view and call
-      `PostProcessingManager.SetSleepiness(1)`.
+   4. When the local player exists, start the drowsy view without the snore. When the game
+      starts a new sleep state, it plays the snore. Thus, set `preventSleeping`. Then the game
+      does not start its sleep state. Add a patch on `PlayerSleeper.Update`. In the patch, keep
+      the full drowsy view. Call `PostProcessingManager.SetSleepiness(1)`.
    5. While the first screen is visible, make the game input control the first screen, not the
       player:
       - Keep the menu controls (`ControlsManager.SetMenuMode(true)`).
@@ -86,6 +86,8 @@ These items are not in the scope: the join at start, the session history walk an
       - Do not let the game lock the cursor. If the game locks the cursor, unlock the cursor.
         Then move the cursor to its last position.
       - Hide the crosshair.
+      - Send the sleep state of the local player to the other players
+        (`PlayerNetworking.CmdSetSleeping(true)`). Then they see the sleep pose.
    6. Then do the fade: make the black image transparent gradually during 5 s
       (`Start.FadeSeconds`). At the same time, decrease the volume of the intro music to zero.
       Increase the volume of the Environment and SFX buses from zero. Do not let the game stop
@@ -95,7 +97,13 @@ These items are not in the scope: the join at start, the session history walk an
       - Set the gameplay controls.
       - Lock the cursor.
       - Show the crosshair.
-      - Stop the drowsy view.
+      - Clear `preventSleeping`. Set `_wasSleeping` and `_sleepSoundToggle`. Then the game
+        finds the end of the sleep state and plays the wake sound.
+      - Send the end of the sleep state to the other players.
+      - Stop the drowsy view with the smoothing of the game. Do not set `smoothSleepiness`.
+        Give the value of `smoothSleepiness` to `SetSleepiness`. Use the same value for the
+        alpha of the first screen. When the value is 0.01 or less, remove the first screen.
+        The drowsy view stops in approximately 0.33 s.
    Result (2026-11-28): the operator tested T2 on a flat screen and accepted it. It is possible
    that the `MainMenu` canvas is not visible in VR. The operator must test T2 in VR.
 3. **T3 — save switch (#14).** Plan it after T2. For T3, the chat input (`TextChatInput`),

@@ -20,6 +20,11 @@ internal static class GameStart
     internal static bool Enabled;
     internal static float FadeSeconds = 5f;
 
+    // After continue: the game decreases the drowsy view with its own smoothing, and the first screen fades out with it.
+    private static bool _waking;
+    private static float _sleepSentAt = -10f;
+    private static CanvasGroup _wakeGroup;
+
     // Above the canvases of the game, for example WorldUICanvas, which covers the screen while the world loads.
     private const int SortingOrder = 32000;
 
@@ -75,6 +80,7 @@ internal static class GameStart
             }
             SetCrosshair(false);
             ClearEscState();
+            SendSleeping(true, now);
         }
         float cover = _seq.Cover(now);
         if (_backdrop != null) _backdrop.color = new Color(0f, 0f, 0f, cover);
@@ -114,10 +120,9 @@ internal static class GameStart
                 SetMeters(false); // the meter throws while the game scene loads
                 break;
             case StartPhase.WaitView:
-                // Without these two values, PlayerSleeper.Update sees a new sleep state and plays the snore.
-                local.sleeper._wasSleeping = true;
-                local.sleeper._sleepSoundToggle = true;
-                local.sleeper.forceSleeping = true;
+                // The game must not enter its sleep state while the first screen shows: a new sleep state plays the
+                // snore. The patch on PlayerSleeper.Update makes the drowsy view.
+                local.sleeper.preventSleeping = true;
                 // The open world menu stops the player input and frees the cursor. Hide the pause menu in it.
                 var wm = WorldMenuManager.instance;
                 OwnMenuCall = true;
@@ -148,10 +153,15 @@ internal static class GameStart
         PlayerCharacter local = DiaryHost.LocalPlayer();
         if (local != null)
         {
-            local.sleeper.forceSleeping = false;
+            // The game was not in its sleep state. Give it the end of a sleep state, so that it plays the wake sound.
+            local.sleeper.preventSleeping = false;
+            local.sleeper._wasSleeping = true;
+            local.sleeper._sleepSoundToggle = true;
             local.sleeper.RecordAction();
         }
         Plugin.Logger.LogInfo($"Diary: game start continue at {Time.time:0.00} s.");
+        SendSleeping(false, Time.time);
+        StartWake();
         Stop();
         OwnMenuCall = true;
         WorldMenuManager.instance?.CloseMenu();
@@ -162,6 +172,43 @@ internal static class GameStart
         local?.menu?.BlockActionsPostMenu(); // the click on continue is not a player action
         CursorManager.SetLocked();
         SetCrosshair(true);
+    }
+
+    /// <summary>True while the first screen holds the input: the patch on PlayerSleeper keeps the full drowsy view.</summary>
+    internal static bool PinsDrowsy => HoldsInput;
+
+    /// <summary>True after continue, until the game decreased the drowsy view to zero.</summary>
+    internal static bool Waking => _waking;
+
+    // The other players see the sleep pose of the local player only from the synchronized sleep state. The game does
+    // not start its sleep state while the first screen shows, thus send it here. Check it one time each second.
+    private static void SendSleeping(bool sleeping, float now)
+    {
+        if (sleeping && now - _sleepSentAt < 1f) return;
+        _sleepSentAt = now;
+        var pn = DiaryHost.LocalPlayer()?.playerNetworking;
+        if (pn != null && pn.isSleeping != sleeping) pn.CmdSetSleeping(sleeping);
+    }
+
+    // The canvas of the first screen stays during the wake. It becomes transparent with the drowsy view.
+    private static void StartWake()
+    {
+        if (_canvas == null) return;
+        _wakeGroup = _canvas.gameObject.GetComponent<CanvasGroup>() ?? _canvas.gameObject.AddComponent<CanvasGroup>();
+        _wakeGroup.interactable = false;
+        _wakeGroup.blocksRaycasts = false;
+        _waking = true;
+        _canvas = null; // Stop must not destroy it
+    }
+
+    /// <summary>The patch on PlayerSleeper gives the drowsy level of the game after each update during the wake.</summary>
+    internal static void WakeStep(float level)
+    {
+        if (_wakeGroup != null) _wakeGroup.alpha = level;
+        if (level > 0.01f) return;
+        if (_wakeGroup != null) Object.Destroy(_wakeGroup.gameObject);
+        _wakeGroup = null;
+        _waking = false;
     }
 
     // While the world loads, the game locks the cursor. A lock moves the cursor to the middle of the screen, and the
@@ -352,11 +399,20 @@ internal static class GameStartPatches
     private static void DrowsyAfter(PlayerSleeper __instance)
     {
         if (Drowsy(__instance)) PostProcessingManager.SetSleepiness(1f);
+        else if (GameStart.Waking && IsLocal(__instance))
+        {
+            // The wake: the game decreases smoothSleepiness with its own smoothing, as after a real sleep.
+            float level = __instance.smoothSleepiness;
+            PostProcessingManager.SetSleepiness(level);
+            GameStart.WakeStep(level);
+        }
     }
+
+    private static bool IsLocal(PlayerSleeper s) => s.playerCharacter != null && s.playerCharacter.isLocalPlayer;
 
     private static bool Drowsy(PlayerSleeper s)
     {
-        if (!GameStart.HoldsInput || s.playerCharacter == null || !s.playerCharacter.isLocalPlayer) return false;
+        if (!GameStart.PinsDrowsy || !IsLocal(s)) return false;
         s.localIsSleeping = true;
         s.smoothSleepiness = 1f;
         s.smoothSleepinessVelocity = 0f;
