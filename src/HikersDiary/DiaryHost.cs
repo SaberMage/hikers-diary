@@ -121,6 +121,7 @@ public sealed class DiaryHost : MonoBehaviour
         RestoreProps(save.Props);
         RestoreVehicles(save.Vehicles);
         RestoreTime(save.EnviroTicks);
+        RestoreHost(save.Players, host);
     }
 
     /// <summary>Writes the Diary file of the loaded slot. Also called when the host stops.</summary>
@@ -144,6 +145,12 @@ public sealed class DiaryHost : MonoBehaviour
         SaveProps(save.Props);
         LogSwitchStates();
         SaveVehicles(save.Vehicles);
+        PlayerCharacter host = LocalPlayer();
+        if (host != null)
+        {
+            save.Players.Add(SavePlayer(host));
+            LogNearSeats(host);
+        }
         save = save with { EnviroTicks = EnviroTicksNow() };
         try
         {
@@ -154,7 +161,7 @@ public sealed class DiaryHost : MonoBehaviour
             Plugin.Logger.LogWarning($"Diary: snapshot failed: {e.Message}");
             return;
         }
-        Plugin.Logger.LogInfo($"Diary: snapshot ({reason}) of slot {_slotUid}, {save.Bodies.Count} bodies, {save.Props.Count} props, {save.Vehicles.Count} vehicles, time {(save.EnviroTicks == 0 ? "none" : new DateTime(save.EnviroTicks).ToString("s"))}.");
+        Plugin.Logger.LogInfo($"Diary: snapshot ({reason}) of slot {_slotUid}, {save.Bodies.Count} bodies, {save.Props.Count} props, {save.Vehicles.Count} vehicles, {save.Players.Count} players, time {(save.EnviroTicks == 0 ? "none" : new DateTime(save.EnviroTicks).ToString("s"))}.");
     }
 
     // This set holds the props on a moving platform that the log showed. The log shows each prop one time.
@@ -341,6 +348,105 @@ public sealed class DiaryHost : MonoBehaviour
         var d = new DateTime(ticks);
         time.SetDateTime(d.Second, d.Minute, d.Hour, d.Day, d.Month, d.Year);
         Plugin.Logger.LogInfo($"Diary: restored time {d:s}.");
+    }
+
+    private static PropRecord KeyOf(Prop p)
+    {
+        Transform t = p.transform;
+        Vector3 pos = t.position;
+        Quaternion r = t.rotation;
+        return new PropRecord(p.savablePropGuid ?? "", p.networkIdentity != null ? p.networkIdentity.sceneId : 0,
+            PathOf(t), new[] { pos.x, pos.y, pos.z }, new[] { r.x, r.y, r.z, r.w });
+    }
+
+    private static PropHome Pocket(PlayerCharacter pc, string name) => name switch
+    {
+        "backpack" => pc.registry.backpackPocket,
+        "holster" => pc.registry.holsterPocket,
+        _ => pc.registry.blindfoldPocket,
+    };
+
+    // [impl->REQ-PLAYER-STATE]
+    private static PlayerRecord SavePlayer(PlayerCharacter pc)
+    {
+        PlayerNetworking net = pc.playerNetworking;
+        Transform t = pc.transform;
+        Vector3 p = t.position;
+        Quaternion r = t.rotation;
+        Vector2 head = pc.head.headState;
+        var items = new Dictionary<string, PropRecord>();
+        if (pc.hands.heldProp != null) items[PlayerRecord.Hand] = KeyOf(pc.hands.heldProp);
+        foreach (string name in PlayerRecord.Pockets)
+        {
+            Prop pinned = Pocket(pc, name)?.pinnedProp;
+            if (pinned != null) items[name] = KeyOf(pinned);
+        }
+        PlayerPose pose = net.poseReference.shellReference.isEmpty ? null : net.poseReference.shellReference.GetPose();
+        return new PlayerRecord(net.identifier ?? "", new[] { p.x, p.y, p.z }, new[] { r.x, r.y, r.z, r.w },
+            new[] { head.x, head.y }, net.trueCrouchness, net.isSitting, pose != null ? PathOf(pose.transform) : "", items);
+    }
+
+    private static bool _seatsLogged;
+
+    /// <summary>Test aid for T5: logs the 3 seats (PlayerPose) nearest the host one time, so a test can put the host in a seat.</summary>
+    private static void LogNearSeats(PlayerCharacter host)
+    {
+        if (_seatsLogged) return;
+        _seatsLogged = true;
+        Vector3 at = host.transform.position;
+        var near = Object.FindObjectsOfType<PlayerPose>().OrderBy(pp => (pp.transform.position - at).sqrMagnitude).Take(3);
+        foreach (PlayerPose pp in near)
+            Plugin.Logger.LogInfo($"Diary: seat {PathOf(pp.transform)} at {pp.transform.position}.");
+    }
+
+    /// <summary>
+    /// The host has no body, so the game does not keep its state. Move the host player to the
+    /// position and rotation of the last snapshot. Then set the items, then the pose or the sit.
+    /// </summary>
+    // [impl->REQ-PLAYER-STATE]
+    private static void RestoreHost(List<PlayerRecord> players, PlayerCharacter host)
+    {
+        PlayerNetworking net = host.playerNetworking;
+        PlayerRecord rec = players.Find(x => x.Identifier == net.identifier);
+        if (rec == null) return;
+        var pos = new Vector3(rec.Position[0], rec.Position[1], rec.Position[2]);
+        var rot = new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
+        host.grease.Teleport(pos, rot);
+        var head = new Vector2(rec.Head[0], rec.Head[1]);
+        host.head.headState = head;
+        net.NetworkheadState = head;
+
+        var found = new List<string>();
+        foreach ((string slot, PropRecord key) in rec.Items)
+        {
+            var index = new PropIndex(new[] { key });
+            Prop prop = null;
+            var props = Prop.allProps;
+            for (int i = 0; props != null && i < props.Count && prop == null; i++)
+                if (props[i] != null && index.Find(props[i].savablePropGuid,
+                        props[i].networkIdentity != null ? props[i].networkIdentity.sceneId : 0, PathOf(props[i].transform)) != null)
+                    prop = props[i];
+            if (prop == null) continue;
+            if (prop.currentHome != null) prop.ServerSetUnpinned();
+            if (slot == PlayerRecord.Hand) net.ServerPickUpPropAutomatic(prop);
+            else prop.ServerSetPinned(Pocket(host, slot));
+            found.Add(slot);
+        }
+
+        string pose = "none";
+        if (!string.IsNullOrEmpty(rec.PosePath))
+            foreach (PlayerPose pp in Object.FindObjectsOfType<PlayerPose>())
+                if (PathOf(pp.transform) == rec.PosePath)
+                {
+                    net.ServerEnterPoseAuto(pp.shellReference);
+                    pose = rec.PosePath;
+                    break;
+                }
+        if (rec.Sitting && pose == "none") host.sitter.SetSittingLocal(true);
+        // ponytail: the crouch comes from the local input in each frame. The toggle keeps it until the player crouches again.
+        if (rec.Crouch > 0.5f && pose == "none") host.croucher.crouchIsToggledOn = true;
+        Plugin.Logger.LogInfo($"Diary: restored host at {pos}, head {head}, items [{string.Join(", ", found)}] of {rec.Items.Count}, " +
+            $"pose {pose}, sitting {rec.Sitting}, crouch {rec.Crouch:0.00}.");
     }
 
     private static string PathOf(Transform t)

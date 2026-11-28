@@ -58,8 +58,24 @@ slideshow (revisions b and c).
    had state 0. Thus, the game save keeps the light states. The host does not save
    them.
    The carousel is the solo gondola (the answer from the operator on 2026-11-27).
+<!-- [doc->REQ-PLAYER-STATE] -->
 5. **T5 — player state (#5).** Do the host first. The host has no body. Then do the clients
-   with the T1 method.
+   with the T1 method. In each snapshot, the host saves these data of its own player:
+   - the position, the rotation, and `headState`
+   - the crouch and the sit
+   - the GameObject path of the `PlayerPose`
+   - the held item, and the items in the backpack, holster and blindfold pockets
+
+   After a game load, the host moves its player with `PlayerGrease.Teleport`. It returns the items with
+   `ServerPickUpPropAutomatic` and `Prop.ServerSetPinned`. Then it enters the pose with
+   `ServerEnterPoseAuto`.
+   Result for the host on 2026-11-27: before a game load, we changed the host record in the Diary
+   file. We set a stump seat, a head direction, a torch in the hand, and a map in the holster.
+   After the load, the host was in the seat with the torch and the map. The next snapshot read
+   these values from the game. The keys of the items are `savablePropGuid`. The path of a held
+   item changes, because the item is then below the player in the hierarchy. We did not test the
+   ground sit and the crouch yet. A single-PC test cannot make them, because player input is
+   necessary for them.
 6. **T6 — colors (#6).**
 7. **T7 — review.** Do a two-player test of all items. Then send the review request to the
    liaison.

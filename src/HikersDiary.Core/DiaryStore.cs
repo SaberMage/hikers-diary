@@ -8,17 +8,18 @@ namespace HikersDiary.Core;
 /// missing in the file (an older version) as an empty list.
 /// </summary>
 public sealed record DiarySave(int Version, string SlotUid, List<BodyRecord> Bodies, List<PropRecord> Props,
-    List<VehicleRecord>? Vehicles = null, long EnviroTicks = 0)
+    List<VehicleRecord>? Vehicles = null, long EnviroTicks = 0, List<PlayerRecord>? Players = null)
 {
     /// <summary>
     /// Version 2 added <see cref="Props"/>. Version 3 added <see cref="Vehicles"/> and
     /// <see cref="EnviroTicks"/> (the Enviro date and time as <c>DateTime</c> ticks. The value is 0
-    /// if the host did not save the time).
+    /// if the host did not save the time). Version 4 added <see cref="Players"/>.
     /// </summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     public static DiarySave Empty(string slotUid) =>
-        new(CurrentVersion, slotUid, new List<BodyRecord>(), new List<PropRecord>(), new List<VehicleRecord>());
+        new(CurrentVersion, slotUid, new List<BodyRecord>(), new List<PropRecord>(), new List<VehicleRecord>(),
+            Players: new List<PlayerRecord>());
 }
 
 /// <summary>
@@ -78,7 +79,7 @@ public static class DiaryStore
             if (save.Version > DiarySave.CurrentVersion)
                 throw new InvalidDataException($"{p} is version {save.Version}. This mod reads version {DiarySave.CurrentVersion} or older.");
             return save with { Bodies = save.Bodies ?? new List<BodyRecord>(), Props = save.Props ?? new List<PropRecord>(),
-                Vehicles = save.Vehicles ?? new List<VehicleRecord>() };
+                Vehicles = save.Vehicles ?? new List<VehicleRecord>(), Players = save.Players ?? new List<PlayerRecord>() };
         }
         throw new InvalidDataException($"Cannot read {path} or its backup.", first);
     }
