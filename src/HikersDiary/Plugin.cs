@@ -48,6 +48,8 @@ public sealed class Plugin : BasePlugin
         var harmony = new HarmonyLib.Harmony(Guid);
         harmony.PatchAll(typeof(SessionStopPatches));
         harmony.PatchAll(typeof(BodyMatchLog));
+        ColorPatches.Open(DiaryHost.StoreDir);
+        harmony.PatchAll(typeof(ColorPatches));
         Logger.LogInfo($"Diary: {harmony.GetPatchedMethods().Count()} hooks installed.");
         Logger.LogInfo($"Diary armed. Store: {DiaryHost.StoreDir}");
     }

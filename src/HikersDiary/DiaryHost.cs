@@ -498,9 +498,12 @@ public sealed class DiaryHost : MonoBehaviour
             GameObject go = Object.Instantiate(prefab, pos, rot);
             Corpse c = go.GetComponent<Corpse>();
             c.identifier = b.Identifier;
-            c.NetworkheadColorIndex = b.HeadColor;
-            c.NetworktorsoColorIndex = b.TorsoColor;
-            c.NetworklegsColorIndex = b.LegsColor;
+            // [impl->REQ-PLAYER-COLORS] The colors in the color book come before the colors of the body record.
+            ColorBook book = ColorPatches.Book;
+            int Color(int part, int saved) => book?.Get(b.Identifier, part) is int v and >= 0 ? v : saved;
+            c.NetworkheadColorIndex = Color(0, b.HeadColor);
+            c.NetworktorsoColorIndex = Color(1, b.TorsoColor);
+            c.NetworklegsColorIndex = Color(2, b.LegsColor);
             NetworkServer.Spawn(go, (NetworkConnection)null);
             // [impl->REQ-PLAYER-STATE] When the player joins again, the game moves the backpack and
             // holster items to the player and drops the other items (Corpse.ExpireDueToRevival).

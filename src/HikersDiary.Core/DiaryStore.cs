@@ -42,12 +42,15 @@ public static class DiaryStore
     }
 
     // [impl->REQ-DIARY-SAVE]
-    public static void Write(string path, DiarySave save)
+    public static void Write(string path, DiarySave save) => WriteAtomic(path, JsonSerializer.Serialize(save, Options));
+
+    /// <summary>Writes the text to a temporary file, then replaces the old file and keeps it as <c>.bak</c>.</summary>
+    internal static void WriteAtomic(string path, string text)
     {
         string? dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         string tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(save, Options));
+        File.WriteAllText(tmp, text);
         if (File.Exists(path)) File.Replace(tmp, path, path + ".bak");
         else File.Move(tmp, path);
     }

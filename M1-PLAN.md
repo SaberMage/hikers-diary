@@ -102,7 +102,23 @@ slideshow (revisions b and c).
    a torch in the hand and a map in the backpack. After the load, the body held the torch and the
    map. The next snapshot read these items from the homes of the body. The two-player test of the
    join is a part of T7. In M1, a client starts at its body and does not sit again.
-6. **T6 — colors (#6).**
+<!-- [doc->REQ-PLAYER-COLORS] -->
+6. **T6 — colors (#6).** The game keeps the colors of each player in each save slot. The color
+   book is one file for all slots: `colors.json` in the Diary folder. For each game identifier, it
+   holds the Steam ID and the head, torso and legs colors. These items occur only on the host:
+   - `PlayerLooks.LoadOne` reads a color from the slot. If the book has a color for that player
+     and part, the host calls `ServerSetLook(color, part, true)` instead. Thus the slot also
+     receives the color.
+   - If the book has no color, the game method runs. Then the host writes the result to the book.
+   - `PlayerLooks.ServerSaveLook` writes a changed color to the slot. Then the host also writes the
+     color to the book.
+
+   When the host restores a body and the book has colors for that body, the host uses the colors
+   from the book. The book is on the host computer, so it applies to all saves on that computer.
+   Result on 2026-11-27: at the first load, the book was empty. The host wrote the colors of the
+   slot (19, 0, 8) and the Steam ID to the book. Then we changed the book to 5, 3, 12. After the
+   next load, the host had these colors, and the save slot also had them. The two-player test is a
+   part of T7.
 7. **T7 — review.** Do a two-player test of all items. Then send the review request to the
    liaison.
 

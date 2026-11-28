@@ -66,6 +66,11 @@ title = "The host saves the Enviro date and time. After a game load, it sets the
 required_stages = ["doc", "impl", "unit"]
 
 [[requirements]]
+id = "REQ-PLAYER-COLORS"
+title = "The host keeps one color set for each player in a file that all saves share. When a color changes, the host writes it to that file. When the game loads a save, the host gives each player the colors from that file (#6)"
+required_stages = ["doc", "impl", "unit"]
+
+[[requirements]]
 id = "REQ-PLAYER-STATE"
 title = "The host saves the position, facing, pose, held item and equipped items of its own player, and the items of each body. After a game load, it sets them again (#5)"
 required_stages = ["doc", "impl", "unit"]
