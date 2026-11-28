@@ -28,6 +28,7 @@
     <Reference Include="Mirror.Transports"><HintPath>$(InteropDir)\Mirror.Transports.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(InteropDir)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.PhysicsModule"><HintPath>$(InteropDir)\UnityEngine.PhysicsModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="AudioSystem"><HintPath>$(InteropDir)\AudioSystem.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.UIModule"><HintPath>$(InteropDir)\UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Enviro3.Runtime"><HintPath>$(InteropDir)\Enviro3.Runtime.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.Splines"><HintPath>$(InteropDir)\Unity.Splines.dll</HintPath><Private>false</Private></Reference>

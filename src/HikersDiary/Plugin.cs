@@ -66,6 +66,7 @@ public sealed class Plugin : BasePlugin
         var harmony = new HarmonyLib.Harmony(Guid);
         harmony.PatchAll(typeof(SessionStopPatches));
         harmony.PatchAll(typeof(BodyMatchLog));
+        if (StartFlow.LogFlow) harmony.PatchAll(typeof(PickLog));
         ColorPatches.Open(DiaryHost.StoreDir);
         harmony.PatchAll(typeof(ColorPatches));
         harmony.PatchAll(typeof(CarHoldPatch));

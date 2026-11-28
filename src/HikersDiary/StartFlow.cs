@@ -21,6 +21,9 @@ internal static class StartFlow
     {
         if (!LogFlow || Time.time > 240f) return;
         KeepMicCheck();
+        Measure();
+        // The scan below finds all MonoBehaviours in each frame. It is slow, thus do not do it while we measure.
+        if (_keptAt >= 0f && Time.time > 10f && Time.time < 34f) return;
         string scenes = string.Join(",", Enumerable.Range(0, SceneManager.sceneCount).Select(i => SceneManager.GetSceneAt(i).name));
         var mm = Object.FindObjectOfType<MainMenuManager>();
         string menus = mm == null ? "no manager" : string.Join(",", Object.FindObjectsOfType<MonoBehaviour>()
@@ -61,10 +64,58 @@ internal static class StartFlow
         }
     }
 
+    // Spike 3: frame time with the kept canvas (10 s to 20 s) and without it (22 s to 32 s).
+    // Then force the drowsy view at 34 s and stop it at 46 s. The Pick log shows the sleep sounds.
+    private static int _frames;
+    private static float _sum, _max;
+    private static int _phase;
+
+    private static void Measure()
+    {
+        if (_keptAt < 0f) return;
+        float t = Time.time, dt = Time.unscaledDeltaTime;
+        if ((t >= 10f && t < 20f) || (t >= 22f && t < 32f)) { _frames++; _sum += dt; if (dt > _max) _max = dt; }
+        if (_phase == 0 && t >= 20f) { LogFrames("with the canvas"); if (_kept != null) _kept.gameObject.SetActive(false); _phase = 1; }
+        if (_phase == 1 && t >= 32f) { LogFrames("without the canvas"); _phase = 2; }
+        var sleeper = LocalSleeper();
+        if (_phase == 2 && t >= 34f && sleeper != null) { sleeper._wasSleeping = true; sleeper._sleepSoundToggle = true; sleeper.forceSleeping = true; Plugin.Logger.LogInfo($"Diary: spike 6 force sleep with _wasSleeping and the sound toggle set at {t:0.00} s."); _phase = 3; }
+        if (_phase == 3 && t >= 46f && sleeper != null) { sleeper.forceSleeping = false; Plugin.Logger.LogInfo($"Diary: spike 3 stop sleep at {t:0.00} s."); _phase = 4; }
+    }
+
+    private static void LogFrames(string what)
+    {
+        Plugin.Logger.LogInfo($"Diary: spike 3 frames {what}: {_frames} frames, mean {1000f * _sum / Mathf.Max(1, _frames):0.0} ms, max {1000f * _max:0.0} ms.");
+        _frames = 0; _sum = 0f; _max = 0f;
+    }
+
+    private static PlayerSleeper LocalSleeper()
+    {
+        var all = PlayerCharacter.allPlayerCharacters;
+        for (int i = 0; all != null && i < all.Count; i++) if (all[i] != null && all[i].isLocalPlayer) return all[i].sleeper;
+        return null;
+    }
+
+    internal static void LogPick(AudioPicker picker, AudioAsset result)
+    {
+        if (!LogFlow || picker == null || Time.time < 33f) return;
+        Plugin.Logger.LogInfo($"Diary: spike 3 pick at {Time.time:0.00} s: {picker.name} -> {(result == null ? "null" : result.name)}.");
+    }
+
     private static string KeptState()
     {
         if (_kept == null) return "destroyed";
         var cam = _kept.worldCamera;
         return $"active {_kept.isActiveAndEnabled}, mode {_kept.renderMode}, sort {_kept.sortingOrder}, camera {(cam == null ? "none" : $"{cam.name} enabled {cam.isActiveAndEnabled}")}, scene {_kept.gameObject.scene.name}";
     }
+}
+
+// ponytail: Spike 3 only. It logs each AudioPicker.Pick to find the sleep sound. Remove it with StartFlow.
+[HarmonyLib.HarmonyPatch(typeof(AudioPicker))]
+internal static class PickLog
+{
+    [HarmonyLib.HarmonyPostfix, HarmonyLib.HarmonyPatch(nameof(AudioPicker.Pick), typeof(int))]
+    private static void Int(AudioPicker __instance, AudioAsset __result) => StartFlow.LogPick(__instance, __result);
+
+    [HarmonyLib.HarmonyPostfix, HarmonyLib.HarmonyPatch(nameof(AudioPicker.Pick), typeof(float))]
+    private static void Float(AudioPicker __instance, AudioAsset __result) => StartFlow.LogPick(__instance, __result);
 }
