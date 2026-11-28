@@ -262,15 +262,18 @@ slideshow (revisions b and c).
       Result (2026-11-28, test aid `WaterProbe`):
       - `GetDepth` is not a depth. It gives the y of the point minus the y of the water surface.
         At a point below the surface, the value is negative.
-      - The test aid measured the water depth at the ground at intervals of 4 m on the map. The maximum
-        depth on the map is 1.15 m. All the points that are deeper than 1 m are on
-        `Ocean/FloatFloorCollider`. The top of this floor is at y = -0.8. The ocean surface is
-        between y = -0.45 and y = 0.35.
-      - The rivers have no point that is deeper than 1 m.
-      - The test aid moved the host to the 6 deepest points. At each point, the host stood on
-        the floor (host y = -0.05). The host did not go below the floor.
-      - Thus, a player can stand at all points in the water on the map. Steps 3 and 4 have no
-        object to move. The operator must decide what to do with #8.
+      - `Ocean/FloatFloorCollider` (the float floor) supports the players. Its top is at y = -0.8. A player in the
+        ocean stands on it (host y = -0.05).
+      - Below the float floor, the maximum depth of the seabed is 29.5 m. The rivers have no point
+        that is deeper than 1 m.
+      - The test aid dropped a peg tile at a point with a depth of 29.5 m and at a point with a
+        depth of 2 m. At the two points, the peg tile stopped on the float floor (y = -0.73).
+        At the deep point, the game pushed it toward the island at 1 m/s.
+      - Thus, a peg tile does not go below the float floor. The operator thinks that it is
+        possible that only the lantern orbs go below the float floor. We did not test the lantern
+        orbs.
+      - The operator stopped work on #8 on 2026-11-28 (state `shelved`). To continue, first test
+        a lantern orb with the test aid `WaterProbe`. Do steps 3 and 4 after this test.
    3. At the start of the session, make the host read the depth at each loose prop. If the depth
       is more than the maximum depth from step 2, make the host move the prop to the nearest
       shore. To find the nearest shore, use the magnet point of the nearest pusher.
