@@ -226,13 +226,14 @@ public sealed class DiaryHost : MonoBehaviour
             $"path {byKey["path"]}; scene match with other path {pathDiffers}; taken from start home {unpinned}).");
     }
 
-    // The last switch-state line in the log. The log shows a new line only when a state changes.
+    // This field keeps the last switch-state line in the log. The log shows a new line only when a state changes.
     private static string _lastSwitchStates;
     private static bool _lightFlipped;
 
     /// <summary>
-    /// T4 light test: logs the state of each saveable switch (lights, doors, radio stations).
-    /// The game save keeps these states. Compare the line before and after a game load.
+    /// For the T4 light test, this method logs the state of each saveable switch (lights, doors,
+    /// radio stations, gauntlet chambers). The game save keeps these states. Compare the line from
+    /// before a game load with the line from after the load.
     /// </summary>
     private static void LogSwitchStates()
     {
