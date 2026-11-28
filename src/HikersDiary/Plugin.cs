@@ -61,6 +61,8 @@ public sealed class Plugin : BasePlugin
             "Test aid for a second client: at the title menu, join the session with this join code.").Value.Trim();
         DiaryHost.AutoJoinPassword = Config.Bind("Spike", "AutoJoinPassword", "",
             "Test aid for a second client: the password of the session in AutoJoinCode.").Value;
+        SwitchSpike.Enabled = Config.Bind("Spike", "SwitchSpike", false,
+            "Test aid for T3b (#14): log the chat, the sit and sleep states and the scenes. After the continue button, open the chat, shorten the sleep timeout, disconnect and host the latest save again.").Value;
         ClassInjector.RegisterTypeInIl2Cpp<DiaryHost>();
         var driver = new GameObject("HikersDiary") { hideFlags = HideFlags.HideAndDontSave };
         Object.DontDestroyOnLoad(driver);
@@ -72,6 +74,7 @@ public sealed class Plugin : BasePlugin
         ColorPatches.Open(DiaryHost.StoreDir);
         harmony.PatchAll(typeof(ColorPatches));
         harmony.PatchAll(typeof(CarHoldPatch));
+        if (SwitchSpike.Enabled) harmony.PatchAll(typeof(SwitchSpikePatches));
         Logger.LogInfo($"Diary: {harmony.GetPatchedMethods().Count()} hooks installed.");
         Logger.LogInfo($"Diary armed. Store: {DiaryHost.StoreDir}");
     }

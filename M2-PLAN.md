@@ -106,8 +106,91 @@ These items are not in the scope: the join at start, the session history walk an
         The drowsy view stops in approximately 0.33 s.
    Result (2026-11-28): the operator tested T2 on a flat screen and accepted it. It is possible
    that the `MainMenu` canvas is not visible in VR. The operator must test T2 in VR.
-3. **T3 — save switch (#14).** Plan it after T2. For T3, the chat input (`TextChatInput`),
-   the sleep (`PlayerSleeper`) and a save load from the gameplay are necessary.
+<!-- [doc->REQ-SAVE-SWITCH] -->
+3. **T3 — save switch (#14).** The requirements are `REQ-SAVE-SWITCH` (the switch) and
+   `REQ-CHAT-COMMAND` (the parser and rule 2). When a task starts, activate its stages.
+
+   These are the game facts. Their source is `ilspycmd` (2026-11-28). The interop DLLs have the
+   signatures only. Thus, the spike must measure the behavior.
+   - `TextChatInput` (`instance`, `inputIsOpen`, `inputField`) has `OpenInput()`,
+     `CloseInput()`, `GetString()` and `RecordMessage(string)`. Possibly, `RecordMessage`
+     sends the message. `TextChatSource.AddMessage(TextChatMessage)` shows a message over a player.
+     `TextChatMessage` has `message` and `sendingPlayer`.
+   - `PlayerSitter.isSittingLocal` and `isSittingCorrected` tell if the player sits.
+   - `PlayerSleeper` has `timeTilSleep` (30 s), `timeAtLastAction`, `RecordAction()`,
+     `forceSleeping`, `preventSleeping` and `combinedIsSleeping`.
+   - `SaveData` has `slotName`, `password`, `filenameUid` and `lastPlayedTimeAsLong`. The
+     player count is not a field. `SaveManager.GetAllSaveDatasInFolder()`,
+     `WriteCurrentSaveData()`, `RenameSlot(...)` and `SetPassword(string)` exist.
+   - `NetworkMinder` has `StartHost()`, `JoinGame(string)` and `SetServerPassword(string)`.
+     `DisconnectConfirmMenu.ActionDisconnect()` ends a session from the gameplay.
+     `DiaryHost.HostLatestSave` has the steps to host a save from the menus.
+
+   Open questions for the spike:
+   - Which method sends a chat message? Can the mod read the text and stop the message
+     before the game sends it?
+   - After `ActionDisconnect`, does the game return to `BaseScene` and the menus? How long
+     does it take? Can the mod then host a different save with the steps of `HostLatestSave`?
+   - Does the T2 black cover (the `MainMenu` canvas in `DontDestroyOnLoad`) stay visible while the
+     game disconnects and loads the new save? If it does not stay, which other cover can stay?
+   - Where does the game keep the player count of a save?
+   - Does the current `DiaryHost` code restore the pose of the player in the new save?
+
+   Do these tasks in this order:
+   <!-- [doc->REQ-CHAT-COMMAND] -->
+   1. **T3a — command parser (Core, unit tests).** Parse `new: [<2|3|4>p: ]<title>[, <password>]`
+      and `goto: <title|session ID>[, <password>]`. If a text starts with `new:` or `goto:`, it is a
+      command. If a text is a definite match to the title of a local save, it is also a command
+      (rule 2). Other text is not a command. The match ignores the case and the spaces at the two ends. A title that matches
+      two or more saves is not a definite match.
+   2. **T3b — spike (flat screen).** Answer the open questions above. Log these items while
+      the mod disconnects and hosts a new save from the gameplay:
+      - the chat messages that the game sends
+      - the sit state and the sleep state
+      - the scenes and the cameras
+      Result (2026-11-28, test tool `Spike.SwitchSpike`, flat screen, 4 runs):
+      - The game sends a chat message in `PlayerTexter.TrySendTextChat()`. `PlayerTexter.Update`
+        calls it when the player pushes the submit button. Then `CompleteInput` and
+        `CompleteDisplayMessage` send the message and show it. `TextChatInput.Update` only
+        shows the previous entries of the history. The events `onSubmit` and `onEndEdit` of the
+        input field have no listeners.
+      - A prefix on `TrySendTextChat` can read `TextChatInput.GetString()`. If the text is a
+        command, the prefix calls `PlayerTexter.TextChatCancel()` and skips the method. Then
+        the input closes, and the game does not send the message. The test tool did these steps.
+      - In `BaseScene`, `TextChatInput.instance` throws `NullReferenceException`. Read
+        `TextChatInput.instance` only after the world loads.
+      - The initial value of `timeTilSleep` is 30 s. After 25 s with no action, the mod set it
+        to 5 s. The sleep state started 0.1 s later.
+      - `DisconnectConfirmMenu.ActionDisconnect()` ends the session. After 0.2 s, `BaseScene`,
+        `UICamera` and `MicCheckMenu` are active again. Then the steps of `HostLatestSave` host
+        a save. After 2 s, the world loads. 3.6 s after the disconnection, `PlayerCamera` starts.
+      - `DiaryHost` restored the props, the vehicles, the time and the pose of the host when
+        the save loads the second time. No change was necessary.
+      - A save does not keep the player count. The entries are the game keys only (for example
+        `worldSeed` and the gates). Thus, the diary must keep the player count of each save.
+      - After the disconnection, the game shows the first screen again. Thus, T3c can do the T2
+        start steps again with the target save:
+        - show the black first screen
+        - host the save
+        - fade in
+        During the disconnection, the T2 cover is not necessary. The view must be black before
+        the disconnection.
+      - The test did not make the player sit. T3c must measure `PlayerSitter.isSittingLocal`.
+   3. **T3c — local switch.** When a command arrives from the local player, do not send it to
+      the chat. While the player sits, set `timeTilSleep` to a short value (default 5 s). If
+      the player stands or cancels the command, set the initial value again. When the sleep
+      starts, decrease the view and the audio to zero (fade out). Then disconnect. Then host
+      the target save. For `new:`, first make the save, or change its player count and its
+      password. Then use the T2 cover. Then increase the view and the audio again (fade in).
+      The player wakes at the saved pose. The continue button is not necessary for a switch.
+   4. **T3d — join a friend session.** A `goto:` command gives the title of a friend session or
+      a session ID. Join it with the given password, or with the most recent password for that
+      session. If the mod cannot join the session and there is no password, host the local
+      save. If there is no local save, the player wakes and stands before the fade out is
+      complete. Plan T3d after T3c, because the spike did not measure the EOS lobby search.
+
+   Test: the agent does each test with `$TEMP/gears/run-game.sh` and examines the logs. Then
+   the operator does the acceptance test of #14 on a flat screen.
 4. **T4 — hint signs (#15).** Plan it after T3.
 5. **T5 — save picker (#9).** Plan it after T4. For the photo, the frame capture is necessary
    (rule 10).

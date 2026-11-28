@@ -46,6 +46,7 @@ public sealed class DiaryHost : MonoBehaviour
     private void Update()
     {
         GameStart.Step();
+        SwitchSpike.Step();
         if (!NetworkServer.active)
         {
             _slotUid = null;

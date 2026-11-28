@@ -79,3 +79,13 @@ required_stages = ["doc", "impl", "unit"]
 id = "REQ-GAME-START"
 title = "At the first screen, the host loads the latest save behind it. The first screen stays white on black, and the game input controls it. The local player starts in the drowsy view without the snore. The black image becomes transparent while the intro music decreases to zero. Then the continue button starts the gameplay (#13)"
 required_stages = ["doc", "impl", "unit"]
+
+[[requirements]]
+id = "REQ-SAVE-SWITCH"
+title = "A player sits and types a new: or goto: command in the chat. The sleep timeout becomes shorter. When the player sleeps, the view and the audio decrease to zero. Then the target save loads. The view and the audio increase again, and the player wakes at the saved pose (#14)"
+required_stages = ["doc"]
+
+[[requirements]]
+id = "REQ-CHAT-COMMAND"
+title = "The mod parses the new: and goto: chat commands. Other chat text starts a switch only if it is a definite match to the title of one local save. Other chat text never starts a switch (#14, rule 2)"
+required_stages = ["doc", "impl", "unit"]
