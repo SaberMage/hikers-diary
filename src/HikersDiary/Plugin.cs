@@ -51,6 +51,8 @@ public sealed class Plugin : BasePlugin
             "Host-only test aid for T7: move the body of a client who left onto the first train car whose path contains this text. Empty = off.").Value;
         DiaryHost.WaterProbe = Config.Bind("Spike", "WaterProbe", false,
             "Host-only test aid for T8. After the game loads, it logs the water depth at the ground. Then it moves the host to the 6 deepest points and logs where the host stops.").Value;
+        StartFlow.LogFlow = Config.Bind("Spike", "LogStartFlow", false,
+            "This is a test aid for M2 T1. When one of these items changes in the first 240 s, the aid logs them: the menus, the scenes, the cameras, the menu music, and the sleepiness.").Value;
         DiaryHost.AutoHost = Config.Bind("Spike", "AutoHost", false,
             "Test aid: at the title menu, host the save that was played last, for 2 players.").Value;
         DiaryHost.AutoJoinCode = Config.Bind("Spike", "AutoJoinCode", "",

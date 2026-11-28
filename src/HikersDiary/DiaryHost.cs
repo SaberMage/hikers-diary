@@ -45,6 +45,7 @@ public sealed class DiaryHost : MonoBehaviour
 
     private void Update()
     {
+        StartFlow.Step();
         if (!NetworkServer.active)
         {
             _slotUid = null;
