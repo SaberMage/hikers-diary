@@ -87,6 +87,21 @@ slideshow (revisions b and c).
    item changes, because the item is then below the player in the hierarchy. We did not test the
    ground sit and the crouch yet. A single-PC test cannot make them, because player input is
    necessary for them.
+
+   For a client who left, the body (`Corpse`) holds the items. In each snapshot, the host saves
+   the items in the 4 homes of each body. These homes are the grasper (the hand), the backpack,
+   the holster and the blindfold. After a game load, the host restores the props first and then
+   the bodies. Then it pins the items into the homes of each body. The host does not save a body
+   as a loose prop, because the body record keeps it.
+
+   When the client joins again, the game moves the backpack and holster items to the player. It
+   drops the held item and the blindfold item at the body (`Corpse.ExpireDueToRevival`). The
+   game does the same steps without a game load.
+
+   We did the test for the bodies on 2026-11-27. We added a body record to the Diary file, with
+   a torch in the hand and a map in the backpack. After the load, the body held the torch and the
+   map. The next snapshot read these items from the homes of the body. The two-player test of the
+   join is a part of T7. In M1, a client starts at its body and does not sit again.
 6. **T6 — colors (#6).**
 7. **T7 — review.** Do a two-player test of all items. Then send the review request to the
    liaison.

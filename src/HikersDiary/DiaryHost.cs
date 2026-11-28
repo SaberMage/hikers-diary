@@ -117,8 +117,9 @@ public sealed class DiaryHost : MonoBehaviour
             Plugin.Logger.LogInfo($"Diary: slot {slotUid} has no Diary file yet.");
             return;
         }
-        RestoreBodies(save.Bodies, host);
+        // The props come first, so that RestoreProps does not move an item that a body holds.
         RestoreProps(save.Props);
+        RestoreBodies(save.Bodies, host);
         RestoreVehicles(save.Vehicles);
         RestoreTime(save.EnviroTicks);
         RestoreHost(save.Players, host);
@@ -140,7 +141,7 @@ public sealed class DiaryHost : MonoBehaviour
             Vector3 p = t.position;
             Quaternion r = t.rotation;
             save.Bodies.Add(new BodyRecord(c.identifier, new[] { p.x, p.y, p.z }, new[] { r.x, r.y, r.z, r.w },
-                c.headColorIndex, c.torsoColorIndex, c.legsColorIndex));
+                c.headColorIndex, c.torsoColorIndex, c.legsColorIndex, BodyItems(c)));
         }
         SaveProps(save.Props);
         LogSwitchStates();
@@ -178,6 +179,8 @@ public sealed class DiaryHost : MonoBehaviour
         {
             Prop p = props[i];
             if (p == null || !IsLoose(p)) continue;
+            // A body is also a prop. Its BodyRecord keeps it.
+            if (p.GetComponent<Corpse>() != null) continue;
             // Out of scope for #3: a pose relative to a moving platform. The prop stays at its start position.
             if (p.houseNetworkTransform != null && p.houseNetworkTransform.stickyPlatform != null)
             {
@@ -419,13 +422,7 @@ public sealed class DiaryHost : MonoBehaviour
         var found = new List<string>();
         foreach ((string slot, PropRecord key) in rec.Items)
         {
-            var index = new PropIndex(new[] { key });
-            Prop prop = null;
-            var props = Prop.allProps;
-            for (int i = 0; props != null && i < props.Count && prop == null; i++)
-                if (props[i] != null && index.Find(props[i].savablePropGuid,
-                        props[i].networkIdentity != null ? props[i].networkIdentity.sceneId : 0, PathOf(props[i].transform)) != null)
-                    prop = props[i];
+            Prop prop = FindProp(key);
             if (prop == null) continue;
             if (prop.currentHome != null) prop.ServerSetUnpinned();
             if (slot == PlayerRecord.Hand) net.ServerPickUpPropAutomatic(prop);
@@ -447,6 +444,38 @@ public sealed class DiaryHost : MonoBehaviour
         if (rec.Crouch > 0.5f && pose == "none") host.croucher.crouchIsToggledOn = true;
         Plugin.Logger.LogInfo($"Diary: restored host at {pos}, head {head}, items [{string.Join(", ", found)}] of {rec.Items.Count}, " +
             $"pose {pose}, sitting {rec.Sitting}, crouch {rec.Crouch:0.00}.");
+    }
+
+    private static Prop FindProp(PropRecord key)
+    {
+        var index = new PropIndex(new[] { key });
+        var props = Prop.allProps;
+        for (int i = 0; props != null && i < props.Count; i++)
+            if (props[i] != null && index.Find(props[i].savablePropGuid,
+                    props[i].networkIdentity != null ? props[i].networkIdentity.sceneId : 0, PathOf(props[i].transform)) != null)
+                return props[i];
+        return null;
+    }
+
+    /// <summary>The home of a body for a slot name of <see cref="PlayerRecord"/>. The hand is the grasper home.</summary>
+    private static PropHome BodyHome(Corpse c, string slot) => slot switch
+    {
+        PlayerRecord.Hand => c.grasperHome,
+        "backpack" => c.backpackHome,
+        "holster" => c.holsterHome,
+        _ => c.blindfoldHome,
+    };
+
+    // [impl->REQ-PLAYER-STATE]
+    private static Dictionary<string, PropRecord> BodyItems(Corpse c)
+    {
+        var items = new Dictionary<string, PropRecord>();
+        foreach (string slot in PlayerRecord.Pockets.Prepend(PlayerRecord.Hand))
+        {
+            Prop pinned = BodyHome(c, slot)?.pinnedProp;
+            if (pinned != null) items[slot] = KeyOf(pinned);
+        }
+        return items;
     }
 
     private static string PathOf(Transform t)
@@ -473,7 +502,19 @@ public sealed class DiaryHost : MonoBehaviour
             c.NetworktorsoColorIndex = b.TorsoColor;
             c.NetworklegsColorIndex = b.LegsColor;
             NetworkServer.Spawn(go, (NetworkConnection)null);
-            Plugin.Logger.LogInfo($"Diary: restored body {b.Identifier} at {pos}.");
+            // [impl->REQ-PLAYER-STATE] When the player joins again, the game moves the backpack and
+            // holster items to the player and drops the other items (Corpse.ExpireDueToRevival).
+            var found = new List<string>();
+            foreach ((string slot, PropRecord key) in b.Items ?? new Dictionary<string, PropRecord>())
+            {
+                Prop prop = FindProp(key);
+                PropHome home = BodyHome(c, slot);
+                if (prop == null || home == null) continue;
+                if (prop.currentHome != null) prop.ServerSetUnpinned();
+                prop.ServerSetPinned(home);
+                found.Add(slot);
+            }
+            Plugin.Logger.LogInfo($"Diary: restored body {b.Identifier} at {pos}, items [{string.Join(", ", found)}] of {b.Items?.Count ?? 0}.");
         }
     }
 

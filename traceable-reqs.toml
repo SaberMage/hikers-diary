@@ -67,5 +67,5 @@ required_stages = ["doc", "impl", "unit"]
 
 [[requirements]]
 id = "REQ-PLAYER-STATE"
-title = "The host saves the position, facing, pose, held item and equipped items of its own player. After a game load, it sets them again (#5, host part)"
+title = "The host saves the position, facing, pose, held item and equipped items of its own player, and the items of each body. After a game load, it sets them again (#5)"
 required_stages = ["doc", "impl", "unit"]

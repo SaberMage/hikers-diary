@@ -13,9 +13,10 @@ public sealed record DiarySave(int Version, string SlotUid, List<BodyRecord> Bod
     /// <summary>
     /// Version 2 added <see cref="Props"/>. Version 3 added <see cref="Vehicles"/> and
     /// <see cref="EnviroTicks"/> (the Enviro date and time as <c>DateTime</c> ticks. The value is 0
-    /// if the host did not save the time). Version 4 added <see cref="Players"/>.
+    /// if the host did not save the time). Version 4 added <see cref="Players"/>. Version 5 added
+    /// <see cref="BodyRecord.Items"/>.
     /// </summary>
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     public static DiarySave Empty(string slotUid) =>
         new(CurrentVersion, slotUid, new List<BodyRecord>(), new List<PropRecord>(), new List<VehicleRecord>(),

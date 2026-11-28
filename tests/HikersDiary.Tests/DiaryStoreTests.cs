@@ -79,6 +79,25 @@ public class DiaryStoreTests
 
     // [unit->REQ-PLAYER-STATE]
     [Fact]
+    public void BodyItemsRoundTripAndVersion4BodyHasNoItems()
+    {
+        string path = DiaryStore.PathFor(NewDir(), "b5");
+        var map = new PropRecord("g-2", 9UL, "World/Map", new[] { 0f, 0f, 0f }, new[] { 0f, 0f, 0f, 1f });
+        var body = new BodyRecord("puid", new[] { 1f, 2f, 3f }, new[] { 0f, 0f, 0f, 1f }, 1, 2, 3,
+            new Dictionary<string, PropRecord> { ["backpack"] = map, [PlayerRecord.Hand] = map });
+        DiaryStore.Write(path, DiarySave.Empty("b5") with { Bodies = new List<BodyRecord> { body } });
+
+        BodyRecord got = Assert.Single(DiaryStore.Read(path)!.Bodies);
+        Assert.Equal(new[] { "backpack", "hand" }, got.Items!.Keys.OrderBy(k => k));
+        Assert.Equal(map.Guid, got.Items["backpack"].Guid);
+
+        File.WriteAllText(path, "{\"Version\":4,\"SlotUid\":\"b5\",\"Bodies\":[{\"Identifier\":\"puid\",\"Position\":[0,0,0]," +
+            "\"Rotation\":[0,0,0,1],\"HeadColor\":0,\"TorsoColor\":0,\"LegsColor\":0}],\"Props\":[]}");
+        Assert.Null(Assert.Single(DiaryStore.Read(path)!.Bodies).Items);
+    }
+
+    // [unit->REQ-PLAYER-STATE]
+    [Fact]
     public void Version3FileReadsWithNoPlayers()
     {
         string path = DiaryStore.PathFor(NewDir(), "v3");
