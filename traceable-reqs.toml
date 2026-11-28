@@ -52,12 +52,12 @@ required_stages = ["doc", "impl", "unit"]
 
 [[requirements]]
 id = "REQ-VEHICLE-STATE"
-title = "The host saves the state of each NetworkedTrain and each MovementDriver. It finds each one again by its unique GameObject path. After a game load, it sets the saved state again (#4)"
+title = "The host saves the state of each NetworkedTrain and each MovementDriver, and the loaded cars of each NetworkedTrain. It finds each one again by its unique GameObject path. After a game load, it sets the saved state again and keeps each loaded car loaded until something touches it (#4)"
 required_stages = ["doc", "impl", "unit"]
 
 [[requirements]]
 id = "REQ-PLATFORM-PROPS"
-title = "The host saves the position of each prop on a moving platform relative to its platform. After a game load, the host sets the vehicles first and then waits one or two physics steps. Then it moves each prop to its saved position and attaches the prop to its platform again (#4)"
+title = "The host saves the position of each prop, body and player on a moving platform relative to its platform. After a game load, the host sets each NetworkedTrain and each MovementDriver first and loads again each car that is necessary. Then it moves each prop and body to its saved position on its platform. Then it moves the player to its saved position (#4)"
 required_stages = ["doc", "impl", "unit"]
 
 [[requirements]]

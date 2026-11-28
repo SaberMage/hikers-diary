@@ -46,6 +46,36 @@ public class DiaryStoreTests
 
     // [unit->REQ-PLATFORM-PROPS]
     [Fact]
+    public void PlatformOfABodyAndOfAPlayerRoundTrips()
+    {
+        string path = DiaryStore.PathFor(NewDir(), "pp");
+        DiarySave save = DiarySave.Empty("pp");
+        save.Bodies.Add(new BodyRecord("b", new[] { 0.5f, 1f, 0f }, new[] { 0f, 0f, 0f, 1f }, 1, 2, 3, null, "World/Monorail/Car"));
+        save.Players!.Add(new PlayerRecord("h", new[] { 0f, 1.2f, 0f }, new[] { 0f, 0f, 0f, 1f }, new[] { 0f, 0f }, 0f, false,
+            "World/Lift/Car/Pose", new Dictionary<string, PropRecord>(), "World/Lift/Car"));
+        DiaryStore.Write(path, save);
+        DiarySave read = DiaryStore.Read(path)!;
+        Assert.Equal("World/Monorail/Car", Assert.Single(read.Bodies).Platform);
+        Assert.Equal("World/Lift/Car", Assert.Single(read.Players!).Platform);
+    }
+
+    // [unit->REQ-VEHICLE-STATE]
+    [Fact]
+    public void LoadedCarsRoundTripAndAreNullInAVersion6File()
+    {
+        string path = DiaryStore.PathFor(NewDir(), "v7");
+        DiarySave save = DiarySave.Empty("v7");
+        save.Vehicles!.Add(new VehicleRecord("train", "World/Monorail", 0, 10f, 3f, 3f, new[] { 2, 5 }));
+        DiaryStore.Write(path, save);
+        Assert.Equal(new[] { 2, 5 }, Assert.Single(DiaryStore.Read(path)!.Vehicles!).LoadedCars);
+
+        File.WriteAllText(path, "{\"Version\":6,\"SlotUid\":\"v7\",\"Bodies\":[],\"Props\":[],\"Vehicles\":[{\"Kind\":\"train\"," +
+            "\"Path\":\"P\",\"SplineIndex\":0,\"Distance\":1,\"Speed\":0,\"TargetSpeed\":0}]}");
+        Assert.Null(Assert.Single(DiaryStore.Read(path)!.Vehicles!).LoadedCars);
+    }
+
+    // [unit->REQ-PLATFORM-PROPS]
+    [Fact]
     public void PlatformOfAPropRoundTripsAndIsNullInAVersion5File()
     {
         string path = DiaryStore.PathFor(NewDir(), "p6");

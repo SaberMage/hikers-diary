@@ -4,8 +4,10 @@ namespace HikersDiary.Core;
 /// This record contains the saved state of one vehicle (#4). <see cref="Kind"/> is "train" for a game
 /// <c>NetworkedTrain</c> (spline index, distance, speed, target speed) or "driver" for a game
 /// <c>MovementDriver</c> (position in <see cref="Distance"/>, speed). The key is the GameObject path.
+/// <see cref="LoadedCars"/> holds the indices of the train cars that were loaded (not culled), or null.
 /// </summary>
-public sealed record VehicleRecord(string Kind, string Path, int SplineIndex, float Distance, float Speed, float TargetSpeed)
+public sealed record VehicleRecord(string Kind, string Path, int SplineIndex, float Distance, float Speed, float TargetSpeed,
+    int[]? LoadedCars = null)
 {
     /// <summary>
     /// Returns the records by "kind:path". The method cannot identify two vehicles of one kind that

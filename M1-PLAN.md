@@ -122,6 +122,29 @@ slideshow (revisions b and c).
    loaded the car again and moved the peg tile onto it. In the next three snapshots, the peg tile
    was on its car, 0.1 m or less from its position in the first snapshot.
 
+   The host also saves the cull state of each train: the cars that are loaded. After a game load,
+   the host keeps each of these cars loaded until something touches it, for a maximum of 10 s.
+
+   A test body or the host on a car also keeps its position relative to the platform of the car. For a
+   seated host, the platform is the platform of the car of the seat. After a game load, the test
+   body and the host wait for the platform, as a prop does. The host goes onto its platform 0.5 s
+   after the props on that platform, so that the host does not push the props from the platform.
+   Then the host enters its seat again.
+
+   The host saves the train position from the values of the train (`_currentDistance`), not from
+   the network values. The network values are older on a moving train.
+
+   We did a test on 2026-11-27 on a moving monorail car. The host stood on the car, a test body
+   was on the car, and two props (peg tiles) were on the car, one on the other. Two more peg tiles
+   were on the ground, one on the other. After the game load, all of them were at their saved positions.
+   The objects on the car stayed on the car for 45 s, 0.1 m or less from their saved positions.
+
+   We did the same test on a moving gondola car, with the host in a seat and a peg tile in the
+   seat. After the game load, the host was in its seat again, and the peg tile was in the seat. The
+   host and the peg tile moved 120 m with the car. A second peg tile on the first one fell from the
+   moving car before
+   the snapshot. Thus, the game physics, not the Diary, moved that peg tile.
+
    The carousel has no `StickyPlatform`. All colliders of the carousel seat are on the layer
    `World`, and the physics ignores the collisions between the layers `Prop` and `World`. Thus, a
    loose prop cannot stay on the carousel. A player can hold a prop on the carousel, and T5 saves

@@ -75,6 +75,7 @@ public sealed class DiaryHost : MonoBehaviour
         if (_dropped != null && Time.time >= _dropCheckAt) CheckDrop();
         CarHoldPatch.Release();
         CullTripStep();
+        if (Scenario) { ScenarioStep(); TrackStep(); }
 
         if (Time.time >= _nextSnapshot)
         {
@@ -169,11 +170,10 @@ public sealed class DiaryHost : MonoBehaviour
         {
             Corpse c = corpses[i];
             if (c == null || string.IsNullOrEmpty(c.identifier)) continue;
-            Transform t = c.transform;
-            Vector3 p = t.position;
-            Quaternion r = t.rotation;
-            save.Bodies.Add(new BodyRecord(c.identifier, new[] { p.x, p.y, p.z }, new[] { r.x, r.y, r.z, r.w },
-                c.headColorIndex, c.torsoColorIndex, c.legsColorIndex, BodyItems(c)));
+            // [impl->REQ-PLATFORM-PROPS] A body on a moving platform keeps its pose relative to the platform.
+            StickyPlatform sp = c.prop != null && c.prop.houseNetworkTransform != null ? c.prop.houseNetworkTransform.stickyPlatform : null;
+            (string platform, float[] p, float[] r) = PoseOn(sp, sp != null ? c.prop.transform : c.transform);
+            save.Bodies.Add(new BodyRecord(c.identifier, p, r, c.headColorIndex, c.torsoColorIndex, c.legsColorIndex, BodyItems(c), platform));
         }
         SaveProps(save.Props);
         LogSwitchStates();
@@ -210,26 +210,26 @@ public sealed class DiaryHost : MonoBehaviour
             if (p == null || !IsLoose(p)) continue;
             // A body is also a prop. Its BodyRecord keeps it.
             if (p.GetComponent<Corpse>() != null) continue;
-            Transform t = p.transform;
-            Vector3 pos = t.position;
-            Quaternion r = t.rotation;
             // [impl->REQ-PLATFORM-PROPS] A prop on a moving platform keeps its pose relative to the platform.
-            StickyPlatform sp = p.houseNetworkTransform != null ? p.houseNetworkTransform.stickyPlatform : null;
-            string platform = null;
-            if (sp != null)
-            {
-                Transform pt = Frame(sp);
-                platform = PathOf(sp.transform);
-                pos = pt.InverseTransformPoint(pos);
-                r = Quaternion.Inverse(pt.rotation) * r;
-            }
+            (string platform, float[] pos, float[] rot) = PoseOn(p.houseNetworkTransform != null ? p.houseNetworkTransform.stickyPlatform : null, p.transform);
             into.Add(new PropRecord(p.savablePropGuid ?? "", p.networkIdentity != null ? p.networkIdentity.sceneId : 0,
-                PathOf(t), new[] { pos.x, pos.y, pos.z }, new[] { r.x, r.y, r.z, r.w }, platform));
+                PathOf(p.transform), pos, rot, platform));
         }
     }
 
     // The props on a moving platform that wait for the vehicles (T4b), and the physics time to move them.
-    private static readonly List<(Prop Prop, PropRecord Record)> _platformPending = new();
+    // An object (a prop, a body or the host) that waits for its platform. Ready is false if a home or a
+    // player took the prop. Place moves the object to its world pose on the platform.
+    private sealed class Pending
+    {
+        internal readonly string Label;
+        internal readonly PropRecord Record;
+        internal readonly Func<bool> Ready;
+        internal readonly Action<Vector3, Quaternion, StickyPlatform> Place;
+        internal Pending(string label, PropRecord record, Func<bool> ready, Action<Vector3, Quaternion, StickyPlatform> place) =>
+            (Label, Record, Ready, Place) = (label, record, ready, place);
+    }
+    private static readonly List<Pending> _platformPending = new();
     private static float _platformAt;
     private static float _platformDeadline;
     private static int _platformFound, _platformMissed;
@@ -257,7 +257,7 @@ public sealed class DiaryHost : MonoBehaviour
             // ponytail: if the game wrote its save after our last snapshot (10 s window), the game save wins.
             // The game put a loose saveable prop in its start home. Remove it from that home first.
             if (p.currentHome != null) { p.ServerSetUnpinned(); unpinned++; }
-            if (rec.Platform != null) { _platformPending.Add((p, rec)); continue; }
+            if (rec.Platform != null) { QueueProp(p, rec, "prop " + path); continue; }
             var pos = new Vector3(rec.Position[0], rec.Position[1], rec.Position[2]);
             var rot = new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
             // The server owns the prop transform. HouseNetworkTransform sends it to the clients.
@@ -284,8 +284,9 @@ public sealed class DiaryHost : MonoBehaviour
         sp.platformingBody != null && sp.platformingBody.rb != null ? sp.platformingBody.rb.transform : sp.transform;
 
     /// <summary>
-    /// Moves each waiting prop to its saved pose on its platform. The vehicles have moved by now.
-    /// When the prop touches the platform, the game attaches it again
+    /// Moves each waiting object (a prop, a body or the host) to its saved pose on its platform. An
+    /// object waits while its car is unloaded or parked. Then the host loads the car again
+    /// (<see cref="CarHoldPatch"/>). When a prop touches the platform, the game attaches it again
     /// (<c>PlatformingBody.OnCollisionEnter</c> sets <c>HouseNetworkTransform.stickyPlatform</c>).
     /// </summary>
     // [impl->REQ-PLATFORM-PROPS]
@@ -306,22 +307,26 @@ public sealed class DiaryHost : MonoBehaviour
         var carOf = new Dictionary<IntPtr, TrainCar>();
         foreach (TrainCar c in Object.FindObjectsOfType<TrainCar>())
             if (c.platformingBody != null) carOf[c.platformingBody.Pointer] = c;
+        var placedNow = new HashSet<string>();
         for (int i = _platformPending.Count - 1; i >= 0; i--)
         {
-            (Prop p, PropRecord rec) = _platformPending[i];
+            Pending pend = _platformPending[i];
+            PropRecord rec = pend.Record;
+            // The host goes onto its platform one pass after the props on it, so that the host body does not push them off.
+            if (pend.Label == "host" && placedNow.Contains(rec.Platform)) continue;
             // An unloaded car has no colliders: no player is near it, and nothing touches it. The chairlift
-            // also parks it below the ground. Load the car again (CarHoldPatch). Its props wait for it.
+            // also parks it below the ground. Load the car again (CarHoldPatch). The object waits for it.
             TrainCar hold = null;
             if (platforms.TryGetValue(rec.Platform, out StickyPlatform wait) && wait.platformingBody != null)
                 carOf.TryGetValue(wait.platformingBody.Pointer, out hold);
             if (!late && (parked.Contains(rec.Platform) || (hold != null && hold.cullState)))
             {
-                if (hold != null) CarHoldPatch.Held[hold.Pointer] = Time.time + 10f;
+                CarHoldPatch.Hold(hold, pend.Label + " waits for it");
                 continue;
             }
             _platformPending.RemoveAt(i);
             // A home or a player that took the prop after RestoreProps (a body, the host) keeps it.
-            if (p == null || !IsLoose(p) || parked.Contains(rec.Platform) || (hold != null && hold.cullState)
+            if (!pend.Ready() || parked.Contains(rec.Platform) || (hold != null && hold.cullState)
                 || !platforms.TryGetValue(rec.Platform, out StickyPlatform sp))
             {
                 _platformMissed++;
@@ -330,32 +335,55 @@ public sealed class DiaryHost : MonoBehaviour
             Transform pt = Frame(sp);
             Vector3 pos = pt.TransformPoint(new Vector3(rec.Position[0], rec.Position[1], rec.Position[2]));
             Quaternion rot = pt.rotation * new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
-            p.transform.SetPositionAndRotation(pos, rot);
-            if (p.rb != null)
-            {
-                p.rb.position = pos;
-                p.rb.rotation = rot;
-                if (!p.rb.isKinematic)
-                {
-                    // The prop moves with the platform from the first step.
-                    Rigidbody prb = sp.platformingBody != null ? sp.platformingBody.rb : null;
-                    p.rb.linearVelocity = prb != null ? prb.GetPointVelocity(pos) : Vector3.zero;
-                    p.rb.angularVelocity = prb != null ? prb.angularVelocity : Vector3.zero;
-                }
-            }
+            pend.Place(pos, rot, sp);
+            placedNow.Add(rec.Platform);
             _platformFound++;
-            // When the prop touches the car, the game keeps the car loaded (TrainCar.UpdateCullState). Release the hold then.
-            if (sp.platformingBody != null && carOf.TryGetValue(sp.platformingBody.Pointer, out TrainCar held) && CarHoldPatch.Held.ContainsKey(held.Pointer))
-                CarHoldPatch.Watch.Add((p, held.Pointer));
-            // The log shows the prop again 3 s later (CheckDrop).
-            (_dropped, _droppedOn, _dropCheckAt) = (p, sp, Time.time + 3f);
-            Plugin.Logger.LogInfo($"Diary: prop {PathOf(p.transform)} to {pos} on {rec.Platform} (platform at {pt.position}).");
+            Plugin.Logger.LogInfo($"Diary: {pend.Label} to {pos} on {rec.Platform} (platform at {pt.position}).");
         }
         _platformAt = Time.fixedTime + 0.5f;
         if (_platformPending.Count > 0) return;
-        Plugin.Logger.LogInfo($"Diary: restored {_platformFound} of {_platformFound + _platformMissed} props on moving platforms " +
+        Plugin.Logger.LogInfo($"Diary: restored {_platformFound} of {_platformFound + _platformMissed} objects on moving platforms " +
             $"({platforms.Count} platforms, {parked.Count} parked, {duplicate.Count} paths with two or more platforms).");
     }
+
+    private static void QueueProp(Prop p, PropRecord rec, string label) =>
+        _platformPending.Add(new Pending(label, rec, () => p != null && IsLoose(p), (pos, rot, sp) => MoveProp(p, pos, rot, sp)));
+
+    private static void MoveProp(Prop p, Vector3 pos, Quaternion rot, StickyPlatform sp)
+    {
+        p.transform.SetPositionAndRotation(pos, rot);
+        if (p.rb != null)
+        {
+            p.rb.position = pos;
+            p.rb.rotation = rot;
+            if (!p.rb.isKinematic)
+            {
+                // The prop moves with the platform from the first step.
+                Rigidbody prb = sp.platformingBody != null ? sp.platformingBody.rb : null;
+                p.rb.linearVelocity = prb != null ? prb.GetPointVelocity(pos) : Vector3.zero;
+                p.rb.angularVelocity = prb != null ? prb.angularVelocity : Vector3.zero;
+            }
+        }
+        // The log shows the prop again 3 s later (CheckDrop).
+        (_dropped, _droppedOn, _dropCheckAt) = (p, sp, Time.time + 3f);
+    }
+
+    /// <summary>The pose of an object relative to its platform. With no platform, the world pose.</summary>
+    private static (string Platform, float[] Position, float[] Rotation) PoseOn(StickyPlatform sp, Transform t)
+    {
+        Vector3 pos = t.position;
+        Quaternion r = t.rotation;
+        if (sp == null) return (null, new[] { pos.x, pos.y, pos.z }, new[] { r.x, r.y, r.z, r.w });
+        Transform pt = Frame(sp);
+        pos = pt.InverseTransformPoint(pos);
+        r = Quaternion.Inverse(pt.rotation) * r;
+        return (PathOf(sp.transform), new[] { pos.x, pos.y, pos.z }, new[] { r.x, r.y, r.z, r.w });
+    }
+
+    /// <summary>The platform of a car, or null.</summary>
+    private static StickyPlatform PlatformOf(TrainCar car) => car == null || car.platformingBody == null ? null
+        : Object.FindObjectsOfType<StickyPlatform>().FirstOrDefault(sp => sp.platformingBody != null
+            && sp.platformingBody.Pointer == car.platformingBody.Pointer);
 
     private static Prop _dropped;
     private static StickyPlatform _droppedOn;
@@ -407,6 +435,7 @@ public sealed class DiaryHost : MonoBehaviour
     private static void DropPropOnPlatform()
     {
         _propDropped = true;
+        if (_scenGround == Vector3.zero) _scenGround = LocalPlayer().transform.position;
         StickyPlatform target = null;
         PlayerCharacter host = LocalPlayer();
         Vector3 h = host.transform.position;
@@ -467,7 +496,87 @@ public sealed class DiaryHost : MonoBehaviour
         _dropped = prop;
         _droppedOn = target;
         _dropCheckAt = Time.time + 3f;
+        if (Scenario) (_scenA, _scenOn, _scenStep, _scenAt) = (prop, target, 1, Time.time + 3f);
         Plugin.Logger.LogInfo($"Diary: test aid: dropped prop {PathOf(prop.transform)} onto {PathOf(target.transform)} (frame {PathOf(frame)} at {frame.position}, collider {(col != null ? PathOf(col.transform) : "none")}) at {at}.");
+    }
+
+    // Test aid for T4b (Scenario): the host on a car, a stack of two props on the car, a test body on a
+    // monorail car, and a stack of two props on the ground. After a game load, a tracker logs them.
+    internal static bool Scenario;
+    private static Prop _scenA;
+    private static StickyPlatform _scenOn;
+    private static int _scenStep, _trackStep;
+    private static float _scenAt, _trackAt;
+    private static Vector3 _scenGround;
+    private const string ScenRack = "OpticalTelegraph/Positioner/CentralArea/PegTileRack_SetD/Pegtiles/PegTileProp";
+
+    private static Prop RackProp(int n) => Prop.allProps?.ToArray().FirstOrDefault(p => p != null && PathOf(p.transform).EndsWith(ScenRack + n));
+
+    private static void Put(Prop p, Vector3 at)
+    {
+        if (p.currentHome != null) p.ServerSetUnpinned();
+        p.transform.position = at;
+        p.rb.position = at;
+        p.rb.linearVelocity = Vector3.zero;
+    }
+
+    private static void ScenarioStep()
+    {
+        if (_scenStep == 1 && Time.time >= _scenAt)
+        {
+            _scenStep = 2;
+            PlayerCharacter host = LocalPlayer();
+            Transform frame = Frame(_scenOn);
+            Prop b = RackProp(3), c = RackProp(4), d = RackProp(5);
+            Put(b, _scenA.transform.position + Vector3.up * 0.4f);
+            Put(c, _scenGround + new Vector3(2f, 0.3f, 0f));
+            Put(d, _scenGround + new Vector3(2f, 0.7f, 0f));
+            string extra = "";
+            if (PathOf(_scenOn.transform).Contains("ChairLift"))
+            {
+                PlayerPose pp = frame.GetComponentsInChildren<PlayerPose>().FirstOrDefault();
+                if (pp != null) { host.playerNetworking.ServerEnterPoseAuto(pp.shellReference); extra = $"host sits in {PathOf(pp.transform)}"; }
+            }
+            else
+            {
+                Corpse body = Corpse.CreateAndSpawn(host, host.registry.corpsePrefab);
+                body.identifier = "hikers-diary-test-body";
+                Vector3 at = _scenA.transform.position + frame.right * 0.9f + Vector3.up * 0.3f;
+                body.transform.position = at;
+                if (body.prop?.rb != null) { body.prop.rb.position = at; body.prop.rb.linearVelocity = Vector3.zero; }
+                extra = $"host stands on the car, test body at {at}";
+            }
+            Plugin.Logger.LogInfo($"Diary: test aid: scenario: stacked {PathOf(b.transform)} on the car prop, {PathOf(c.transform)} and {PathOf(d.transform)} on the ground at {_scenGround}; {extra}.");
+        }
+    }
+
+    /// <summary>Test aid for T4b (Scenario): logs the host, the bodies and the rack props 2 to 5, with the nearest train car.</summary>
+    private static void TrackStep()
+    {
+        if (_slotUid == null || _trackStep >= 10) return;
+        if (_trackStep == 0) { _trackStep = 1; _trackAt = Time.time + 3f; return; }
+        if (Time.time < _trackAt) return;
+        _trackAt = Time.time + 5f;
+        var cars = Object.FindObjectsOfType<TrainCar>().Where(c => c.platformingBody?.rb != null).ToList();
+        string Where(Vector3 at)
+        {
+            TrainCar car = cars.OrderBy(c => (c.platformingBody.rb.position - at).sqrMagnitude).FirstOrDefault();
+            if (car == null) return $"at {at}";
+            Transform f = car.platformingBody.rb.transform;
+            return $"at {at}, nearest car {car.name} {(f.position - at).magnitude:0.0} m (culled {car.cullState}, contacts {car.platformingBody.contacts?.Count ?? 0}), relative {f.InverseTransformPoint(at)}";
+        }
+        PlayerCharacter host = LocalPlayer();
+        PlayerNetworking net = host.playerNetworking;
+        PlayerPose pose = net.poseReference.shellReference.isEmpty ? null : net.poseReference.shellReference.GetPose();
+        Plugin.Logger.LogInfo($"Diary: track {_trackStep}: host {Where(host.transform.position)}, sitting {net.isSitting}, pose {(pose != null ? PathOf(pose.transform) : "none")}.");
+        foreach (Corpse c in Corpse.allCorpses?.ToArray() ?? Array.Empty<Corpse>())
+            if (c != null) Plugin.Logger.LogInfo($"Diary: track {_trackStep}: body {c.identifier} {Where(c.transform.position)}.");
+        for (int n = 2; n <= 5; n++)
+        {
+            Prop p = RackProp(n);
+            if (p != null) Plugin.Logger.LogInfo($"Diary: track {_trackStep}: prop {n} {Where(p.transform.position)}, stickyPlatform {(p.houseNetworkTransform?.stickyPlatform != null ? "yes" : "none")}.");
+        }
+        _trackStep++;
     }
 
     // This field keeps the last switch-state line in the log. The log shows a new line only when a state changes.
@@ -511,8 +620,12 @@ public sealed class DiaryHost : MonoBehaviour
         _vehicleMapLogged = true;
         foreach (NetworkedTrain t in Object.FindObjectsOfType<NetworkedTrain>())
         {
-            into.Add(new VehicleRecord("train", PathOf(t.transform), t.NetworksyncSplineIndex, t.NetworksyncDistance,
-                t.NetworksyncSpeed, t.NetworktargetSpeed));
+            // [impl->REQ-VEHICLE-STATE] The cull state: the cars that are loaded now.
+            var cars = t.cars;
+            int[] loaded = Enumerable.Range(0, cars?.Length ?? 0).Where(i => cars[i] != null && !cars[i].cullState).ToArray();
+            // The sync vars lag behind a moving train. The _current* values are the train now.
+            into.Add(new VehicleRecord("train", PathOf(t.transform), t._currentSplineIndex, t._currentDistance,
+                t._currentSpeed, t.NetworktargetSpeed, loaded));
             if (log)
                 Plugin.Logger.LogInfo($"Diary: vehicle map: NetworkedTrain '{t.name}' path {PathOf(t.transform)}, hasCable {t.hasCable}, " +
                     $"splines {t.splines?.Length ?? 0}, cars {t.cars?.Length ?? 0}, at {t.transform.position}, fraction {t.GetDistanceFraction():0.000}.");
@@ -547,6 +660,9 @@ public sealed class DiaryHost : MonoBehaviour
             t.NetworksyncSpeed = r.Speed;
             t.NetworktargetSpeed = r.TargetSpeed;
             t.NetworksyncTime = NetworkTime.time;
+            // Each car that was loaded at the snapshot stays loaded until something touches it (CarHoldPatch).
+            foreach (int i in r.LoadedCars ?? Array.Empty<int>())
+                if (t.cars != null && i >= 0 && i < t.cars.Length) CarHoldPatch.Hold(t.cars[i], "loaded in the snapshot");
             found++;
         }
         foreach (MovementDriver d in Object.FindObjectsOfType<MovementDriver>())
@@ -619,8 +735,12 @@ public sealed class DiaryHost : MonoBehaviour
             if (pinned != null) items[name] = KeyOf(pinned);
         }
         PlayerPose pose = net.poseReference.shellReference.isEmpty ? null : net.poseReference.shellReference.GetPose();
-        return new PlayerRecord(net.identifier ?? "", new[] { p.x, p.y, p.z }, new[] { r.x, r.y, r.z, r.w },
-            new[] { head.x, head.y }, net.trueCrouchness, net.isSitting, pose != null ? PathOf(pose.transform) : "", items);
+        // [impl->REQ-PLATFORM-PROPS] A player on a moving platform, or in a seat of a car, keeps the pose relative to the platform.
+        StickyPlatform sp = pc.platformer?.stickyPlatform;
+        if (sp == null && pose != null) sp = PlatformOf(pose.GetComponentInParent<TrainCar>());
+        (string platform, float[] pos, float[] rot) = PoseOn(sp, t);
+        return new PlayerRecord(net.identifier ?? "", pos, rot,
+            new[] { head.x, head.y }, net.trueCrouchness, net.isSitting, pose != null ? PathOf(pose.transform) : "", items, platform);
     }
 
     private static bool _seatsLogged;
@@ -648,7 +768,6 @@ public sealed class DiaryHost : MonoBehaviour
         if (rec == null) return;
         var pos = new Vector3(rec.Position[0], rec.Position[1], rec.Position[2]);
         var rot = new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
-        host.grease.Teleport(pos, rot);
         var head = new Vector2(rec.Head[0], rec.Head[1]);
         host.head.headState = head;
         net.NetworkheadState = head;
@@ -664,6 +783,25 @@ public sealed class DiaryHost : MonoBehaviour
             found.Add(slot);
         }
 
+        // [impl->REQ-PLATFORM-PROPS] On a moving platform, the host waits for the platform. Then it goes to its place and its pose.
+        if (rec.Platform != null)
+        {
+            // Index 0: the loop below goes from the end, so the host comes after the props.
+            _platformPending.Insert(0, new Pending("host", new PropRecord("", 0, "", rec.Position, rec.Rotation, rec.Platform), () => true,
+                (at, to, _) => PlaceHost(host, rec, at, to)));
+            Plugin.Logger.LogInfo($"Diary: restored host items [{string.Join(", ", found)}] of {rec.Items.Count}. The host waits for its platform {rec.Platform}.");
+            return;
+        }
+        string pose = PlaceHost(host, rec, pos, rot);
+        Plugin.Logger.LogInfo($"Diary: restored host at {pos}, head {head}, items [{string.Join(", ", found)}] of {rec.Items.Count}, " +
+            $"pose {pose}, sitting {rec.Sitting}, crouch {rec.Crouch:0.00}.");
+    }
+
+    /// <summary>Moves the host, then enters the saved pose, the sit or the crouch. Returns the pose path or "none".</summary>
+    private static string PlaceHost(PlayerCharacter host, PlayerRecord rec, Vector3 pos, Quaternion rot)
+    {
+        PlayerNetworking net = host.playerNetworking;
+        host.grease.Teleport(pos, rot);
         string pose = "none";
         if (!string.IsNullOrEmpty(rec.PosePath))
             foreach (PlayerPose pp in Object.FindObjectsOfType<PlayerPose>())
@@ -676,8 +814,8 @@ public sealed class DiaryHost : MonoBehaviour
         if (rec.Sitting && pose == "none") host.sitter.SetSittingLocal(true);
         // ponytail: the crouch comes from the local input in each frame. The toggle keeps it until the player crouches again.
         if (rec.Crouch > 0.5f && pose == "none") host.croucher.crouchIsToggledOn = true;
-        Plugin.Logger.LogInfo($"Diary: restored host at {pos}, head {head}, items [{string.Join(", ", found)}] of {rec.Items.Count}, " +
-            $"pose {pose}, sitting {rec.Sitting}, crouch {rec.Crouch:0.00}.");
+        if (rec.Platform != null) Plugin.Logger.LogInfo($"Diary: host pose {pose}, sitting {rec.Sitting}.");
+        return pose;
     }
 
     private static Prop FindProp(PropRecord key)
@@ -751,7 +889,10 @@ public sealed class DiaryHost : MonoBehaviour
                 prop.ServerSetPinned(home);
                 found.Add(slot);
             }
-            Plugin.Logger.LogInfo($"Diary: restored body {b.Identifier} at {pos}, items [{string.Join(", ", found)}] of {b.Items?.Count ?? 0}.");
+            // [impl->REQ-PLATFORM-PROPS] A body on a platform waits for its platform, as a prop does.
+            if (b.Platform != null && c.prop != null)
+                QueueProp(c.prop, new PropRecord("", 0, "", b.Position, b.Rotation, b.Platform), "body " + b.Identifier);
+            Plugin.Logger.LogInfo($"Diary: restored body {b.Identifier} at {(b.Platform != null ? "its platform " + b.Platform : pos.ToString())}, items [{string.Join(", ", found)}] of {b.Items?.Count ?? 0}.");
         }
     }
 
@@ -868,9 +1009,14 @@ internal static class SessionStopPatches
 internal static class CarHoldPatch
 {
     // The held cars, and the time when each hold ends at the latest.
-    internal static readonly Dictionary<IntPtr, float> Held = new();
-    // The restored props on a held car. The hold ends when the prop touches a platform.
-    internal static readonly List<(Prop Prop, IntPtr Car)> Watch = new();
+    internal static readonly Dictionary<IntPtr, (TrainCar Car, float Until)> Held = new();
+
+    internal static void Hold(TrainCar car, string reason)
+    {
+        if (car == null || Held.ContainsKey(car.Pointer)) return;
+        Held[car.Pointer] = (car, Time.time + 10f);
+        Plugin.Logger.LogInfo($"Diary: car hold: {car.name} ({reason}).");
+    }
 
     // [impl->REQ-PLATFORM-PROPS]
     [HarmonyPrefix]
@@ -881,23 +1027,22 @@ internal static class CarHoldPatch
         return false;
     }
 
+    /// <summary>
+    /// Ends the hold of a car when something touches it (a prop, a body or a player). Then the game
+    /// keeps the car loaded. A hold also ends after 10 s. Then the game rule applies again.
+    /// </summary>
     // [impl->REQ-PLATFORM-PROPS]
     internal static void Release()
     {
         if (Held.Count == 0) return;
-        for (int i = Watch.Count - 1; i >= 0; i--)
+        foreach ((IntPtr key, (TrainCar car, float until)) in Held.ToList())
         {
-            (Prop p, IntPtr car) = Watch[i];
-            PlatformingBody pb = p != null ? p.GetComponent<PlatformingBody>() : null;
-            if (p != null && (pb == null || pb.contacts == null || pb.contacts.Count == 0)) continue;
-            Watch.RemoveAt(i);
-            if (Held.Remove(car)) Plugin.Logger.LogInfo($"Diary: car hold released, the prop touches {(pb?.connectedPlatform != null ? "its platform" : "an object")}.");
-        }
-        foreach (IntPtr car in Held.Where(kv => Time.time >= kv.Value).Select(kv => kv.Key).ToList())
-        {
-            Held.Remove(car);
-            Watch.RemoveAll(w => w.Car == car);
-            Plugin.Logger.LogWarning("Diary: car hold ended after 10 s. The prop did not touch the car.");
+            int contacts = car?.platformingBody?.contacts?.Count ?? 0;
+            if (contacts == 0 && Time.time < until) continue;
+            Held.Remove(key);
+            Plugin.Logger.LogInfo(contacts > 0
+                ? $"Diary: car hold released: {car.name} has {contacts} contacts."
+                : $"Diary: car hold ended after 10 s: {car?.name} has no contact. The game rule applies.");
         }
     }
 }
