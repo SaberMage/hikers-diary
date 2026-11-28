@@ -53,7 +53,7 @@ public sealed class Plugin : BasePlugin
             "Host-only test aid for T8. After the game loads, it logs the water depth at the ground. Then it moves the host to the 6 deepest points and logs where the host stops.").Value;
         GameStart.Enabled = Config.Bind("Start", "GameStart", true,
             "At the first screen, load the latest save behind it. The player starts in the drowsy view, and the continue button starts the gameplay (#13). False = the menus of the game.").Value;
-        GameStart.FadeSeconds = Config.Bind("Start", "FadeSeconds", 4f,
+        GameStart.FadeSeconds = Config.Bind("Start", "FadeSeconds", 5f,
             "The time in seconds in which the black image of the first screen becomes transparent and the intro music decreases to zero.").Value;
         DiaryHost.AutoHost = Config.Bind("Spike", "AutoHost", false,
             "Test aid: at the title menu, host the save that was played last, for 2 players.").Value;

@@ -65,25 +65,39 @@ These items are not in the scope: the join at start, the session history walk an
      cursor with `CursorManager.SetFree()` and locks it with `CursorManager.SetLocked()`.
 <!-- [doc->REQ-GAME-START] -->
 2. **T2 — game start (#13).** When T2 starts, add `REQ-GAME-START` to `traceable-reqs.toml`.
-   1. At the first screen, hide the continue button. Host the latest save. Use the steps of
-      `TryAutoHost`. If there is no save, do not change the first screen.
-   2. When the host starts, move the `MainMenu` canvas to `DontDestroyOnLoad`. Put a black
-      image behind the first screen. Make the text and the lines white. Disable
-      `MenuVolumeMeter` until the local player exists.
-   3. When the local player exists, start the drowsy view without the snore (see T1). Open the
-      menu for the local player (`SetMenuOpen(true)`, `CursorManager.SetFree()`). Then the
-      game input controls the first screen and the mouse cursor, not the player. The pause
-      menu must not open.
-      The game does not start the sleep state in the first 30 s after the game start. Thus, while
-      the first screen holds the input, a patch on `PlayerSleeper.Update` sets the full drowsy
-      view for the local player.
-   4. Then the black image becomes transparent gradually, and the intro music decreases to
-      zero at the same time. The player stays in the drowsy view.
-   5. Then the continue button appears. The continue button closes the first screen, closes
-      the menu for the local player (`SetMenuOpen(false)`, `BlockActionsPostMenu()`,
-      `CursorManager.SetLocked()`) and ends the drowsy view.
-   Open: it is possible that the `MainMenu` canvas is not visible in VR. The operator must test
-   it in VR.
+   1. In the first frame of the first screen, put a black image behind the content of the
+      first screen. Make the text and the divider lines white. Hide the continue button. Set
+      the sort order of the `MainMenu` canvas to 32000. Then `WorldUICanvas` cannot cover the
+      `MainMenu` canvas.
+   2. After 3 s, host the latest save. Use the steps of `TryAutoHost`. If there is no save,
+      return the colors to their initial values. Then show the continue button.
+   3. When the host starts, move the `MainMenu` canvas to `DontDestroyOnLoad`. Disable
+      `MenuVolumeMeter` until the game view is ready.
+   4. When the local player exists, start the drowsy view without the snore (see T1). The game
+      does not start the sleep state in the first 30 s after the game start. Thus, add a patch
+      on `PlayerSleeper.Update`. The patch must keep the full drowsy view and call
+      `PostProcessingManager.SetSleepiness(1)`.
+   5. While the first screen is visible, make the game input control the first screen, not the
+      player:
+      - Keep the menu controls (`ControlsManager.SetMenuMode(true)`).
+      - Open the world menu. Hide the pause menu of the world menu.
+      - Skip `WorldMenuManager.Update`. Keep `WorldManager.inUI` false. Then ESC has no effect.
+      - Block `PlayerMenu.SetMenuOpen` for the local player. Then ESC does not change the pose.
+      - Do not let the game lock the cursor. If the game locks the cursor, unlock the cursor.
+        Then move the cursor to its last position.
+      - Hide the crosshair.
+   6. Then do the fade: make the black image transparent gradually during 5 s
+      (`Start.FadeSeconds`). At the same time, decrease the volume of the intro music to zero.
+      Increase the volume of the Environment and SFX buses from zero. Do not let the game stop
+      the intro music before the fade ends.
+   7. Then show the continue button. When the user clicks the continue button, do these steps:
+      - Close the first screen and the world menu.
+      - Set the gameplay controls.
+      - Lock the cursor.
+      - Show the crosshair.
+      - Stop the drowsy view.
+   Result (2026-11-28): the operator tested T2 on a flat screen and accepted it. It is possible
+   that the `MainMenu` canvas is not visible in VR. The operator must test T2 in VR.
 3. **T3 — save switch (#14).** Plan it after T2. For T3, the chat input (`TextChatInput`),
    the sleep (`PlayerSleeper`) and a save load from the gameplay are necessary.
 4. **T4 — hint signs (#15).** Plan it after T3.
