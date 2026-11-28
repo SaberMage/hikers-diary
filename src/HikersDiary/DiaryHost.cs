@@ -54,6 +54,8 @@ public sealed class DiaryHost : MonoBehaviour
             return;
         }
         LogJoins();
+        EquipStep();
+        BodyToCarStep();
         PlayerCharacter host = LocalPlayer();
         SaveData slot = SaveManager.instance?.currentData;
         if (host == null || slot == null || string.IsNullOrEmpty(slot.filenameUid)) return;
@@ -95,6 +97,87 @@ public sealed class DiaryHost : MonoBehaviour
             PlayerCharacter pc = all[i];
             if (pc == null || pc.isLocalPlayer || !_seenPlayers.Add(pc.GetInstanceID())) continue;
             Plugin.Logger.LogInfo($"Diary: player {pc.playerNetworking?.identifier} spawned at {pc.transform.position}.");
+            if (EquipClients) _equip.Add((pc, Time.time + 5f));
+        }
+    }
+
+    // Test aid for T7: a player cannot fill its own pockets. The host gives each new client a peg tile in the
+    // hand, the backpack and the holster, with the server calls of the T5 restore.
+    internal static bool EquipClients;
+    private static readonly List<(PlayerCharacter Pc, float At)> _equip = new();
+
+    private static void StartAids()
+    {
+        if (StartChairlift && !_chairliftStarted)
+        {
+            // Test aid: start the chairlift before the platform props, as a save with the key in its slot does.
+            _chairliftStarted = true;
+            PeckDevHelper.Trigger(new PeckDevHelper.UnlockRules { chairlift = true });
+            Plugin.Logger.LogInfo("Diary: test aid: chairlift started (PeckDevHelper).");
+        }
+        if (StartTrain && !_trainStarted)
+        {
+            _trainStarted = true;
+            PeckDevHelper.Trigger(new PeckDevHelper.UnlockRules { train = true });
+            Plugin.Logger.LogInfo("Diary: test aid: monorail started (PeckDevHelper).");
+        }
+    }
+
+    // Test aid for T7: the host moves the body of a client who left onto a monorail car (the car with this path text).
+    internal static string BodyToCar;
+    private static readonly HashSet<int> _bodiesMoved = new();
+    private static (Corpse Body, TrainCar Car, float At)? _bodyMove;
+
+    private static void BodyToCarStep()
+    {
+        if (string.IsNullOrEmpty(BodyToCar)) return;
+        if (_bodyMove == null)
+        {
+            var corpses = Corpse.allCorpses;
+            for (int i = 0; corpses != null && i < corpses.Count; i++)
+            {
+                Corpse c = corpses[i];
+                if (c == null || c.prop == null || !_bodiesMoved.Add(c.GetInstanceID())) continue;
+                TrainCar car = Object.FindObjectsOfType<TrainCar>().FirstOrDefault(t => PathOf(t.transform).Contains(BodyToCar));
+                if (car == null) { Plugin.Logger.LogWarning($"Diary: test aid: no car '{BodyToCar}'."); return; }
+                CarHoldPatch.Hold(car, "test aid: a body goes onto it");
+                _bodyMove = (c, car, Time.time + 2f);
+                return;
+            }
+            return;
+        }
+        (Corpse body, TrainCar target, float when) = _bodyMove.Value;
+        if (Time.time < when) return;
+        _bodyMove = null;
+        if (body == null || target.cullState) { Plugin.Logger.LogWarning("Diary: test aid: the body or the car is not ready."); return; }
+        Transform frame = target.platformingBody.rb.transform;
+        Collider col = null;
+        foreach (Collider c in frame.GetComponentsInChildren<Collider>())
+            if (!c.isTrigger && (col == null || c.bounds.size.sqrMagnitude > col.bounds.size.sqrMagnitude)) col = c;
+        Vector3 at = col != null ? new Vector3(col.bounds.center.x, col.bounds.max.y + 0.5f, col.bounds.center.z) : frame.position + Vector3.up;
+        body.prop.transform.position = at;
+        if (body.prop.rb != null) { body.prop.rb.position = at; body.prop.rb.linearVelocity = target.platformingBody.rb.GetPointVelocity(at); }
+        Plugin.Logger.LogInfo($"Diary: test aid: moved body {body.identifier} onto {target.name} at {at}.");
+    }
+
+    private static void EquipStep()
+    {
+        for (int i = _equip.Count - 1; i >= 0; i--)
+        {
+            (PlayerCharacter pc, float at) = _equip[i];
+            if (Time.time < at) continue;
+            _equip.RemoveAt(i);
+            if (pc == null) continue;
+            var done = new List<string>();
+            foreach ((string slot, int n) in new[] { (PlayerRecord.Hand, 2), ("backpack", 3), ("holster", 4) })
+            {
+                Prop p = RackProp(n);
+                if (p == null || !IsLoose(p)) continue;
+                if (slot == PlayerRecord.Hand) pc.playerNetworking.ServerPickUpPropAutomatic(p);
+                else p.ServerSetPinned(Pocket(pc, slot));
+                done.Add($"{slot}: {PathOf(p.transform)}");
+            }
+            Plugin.Logger.LogInfo($"Diary: test aid: equipped client {pc.playerNetworking?.identifier} with [{string.Join("; ", done)}].");
         }
     }
 
@@ -127,19 +210,7 @@ public sealed class DiaryHost : MonoBehaviour
             return;
         }
         _writable = true;
-        if (StartChairlift && !_chairliftStarted)
-        {
-            // Test aid: start the chairlift before the platform props, as a save with the key in its slot does.
-            _chairliftStarted = true;
-            PeckDevHelper.Trigger(new PeckDevHelper.UnlockRules { chairlift = true });
-            Plugin.Logger.LogInfo("Diary: test aid: chairlift started (PeckDevHelper).");
-        }
-        if (StartTrain && !_trainStarted)
-        {
-            _trainStarted = true;
-            PeckDevHelper.Trigger(new PeckDevHelper.UnlockRules { train = true });
-            Plugin.Logger.LogInfo("Diary: test aid: monorail started (PeckDevHelper).");
-        }
+        if (save == null) StartAids();
         if (save == null)
         {
             Plugin.Logger.LogInfo($"Diary: slot {slotUid} has no Diary file yet.");
@@ -149,6 +220,8 @@ public sealed class DiaryHost : MonoBehaviour
         RestoreProps(save.Props);
         RestoreBodies(save.Bodies, host);
         RestoreVehicles(save.Vehicles);
+        // Test aids: start the lifts after the vehicle restore, which sets the saved speed.
+        StartAids();
         // [impl->REQ-PLATFORM-PROPS] The vehicles move to their saved state in the next physics steps.
         // Then Update moves the props on the platforms (RestorePlatformProps).
         _platformAt = Time.fixedTime + 2f * Time.fixedDeltaTime;
@@ -177,6 +250,15 @@ public sealed class DiaryHost : MonoBehaviour
         }
         SaveProps(save.Props);
         LogSwitchStates();
+        // T7 check: where each client and each body is. A body has a root transform and a prop (the ragdoll).
+        var all = PlayerCharacter.allPlayerCharacters;
+        for (int i = 0; all != null && i < all.Count; i++)
+            if (all[i] != null && !all[i].isLocalPlayer)
+                Plugin.Logger.LogInfo($"Diary: client {all[i].playerNetworking?.identifier} at {all[i].transform.position}, yaw {all[i].transform.eulerAngles.y:0.0}.");
+        for (int i = 0; corpses != null && i < corpses.Count; i++)
+            if (corpses[i] != null && corpses[i].prop != null)
+                Plugin.Logger.LogInfo($"Diary: body {corpses[i].identifier} root at {corpses[i].transform.position}, yaw {corpses[i].transform.eulerAngles.y:0.0}; " +
+                    $"prop {PathOf(corpses[i].prop.transform)} at {corpses[i].prop.transform.position}, yaw {corpses[i].prop.transform.eulerAngles.y:0.0}.");
         SaveVehicles(save.Vehicles);
         PlayerCharacter host = LocalPlayer();
         if (host != null)

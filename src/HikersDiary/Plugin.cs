@@ -45,6 +45,10 @@ public sealed class Plugin : BasePlugin
             "Host-only test aid for T4b: after the game load, start the chairlift (the game dev helper PeckDevHelper, as if the key is in its slot).").Value;
         DiaryHost.PropOnPlatform = Config.Bind("Spike", "PropOnPlatform", "",
             "Host-only test aid for T4b: after the game load, drop one loose prop onto the first moving platform whose path contains this text. Empty = off.").Value;
+        DiaryHost.EquipClients = Config.Bind("Spike", "EquipClients", false,
+            "Host-only test aid for T7: 5 s after a client spawns, put a peg tile in its hand, its backpack and its holster.").Value;
+        DiaryHost.BodyToCar = Config.Bind("Spike", "BodyToCar", "",
+            "Host-only test aid for T7: move the body of a client who left onto the first train car whose path contains this text. Empty = off.").Value;
         DiaryHost.AutoHost = Config.Bind("Spike", "AutoHost", false,
             "Test aid: at the title menu, host the save that was played last, for 2 players.").Value;
         DiaryHost.AutoJoinCode = Config.Bind("Spike", "AutoJoinCode", "",

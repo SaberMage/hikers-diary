@@ -181,9 +181,9 @@ slideshow (revisions b and c).
    the bodies. Then it pins the items into the homes of each body. The host does not save a body
    as a loose prop, because the body record keeps it.
 
-   When the client joins again, the game moves the backpack and holster items to the player. It
-   drops the held item and the blindfold item at the body (`Corpse.ExpireDueToRevival`). The
-   game does the same steps without a game load.
+   When the client joins again, the game moves the items of the body to the player. In the T7 test,
+   the backpack, the holster and the peg tile in the hand went to the player. The backpack and the
+   holster that a player wears are in the backpack home and the holster home of the player.
 
    We did the test for the bodies on 2026-11-27. We added a body record to the Diary file, with
    a torch in the hand and a map in the backpack. After the load, the body held the torch and the
@@ -208,6 +208,28 @@ slideshow (revisions b and c).
    part of T7.
 7. **T7 — review.** Do a two-player test of all items. Then send the review request to the
    liaison.
+
+   We did the two-player test on 2026-11-27. The host was KITSUBITO, with no screen and the test
+   aid `AutoHost`. The operator played the client on HFENDULEAM. A player cannot change its own
+   colors or fill its own backpack or holster. Thus, two host test aids did these steps:
+   `EquipClients` gave the client a peg tile in the hand, a backpack and a holster.
+   `BodyToCar` moved the body of the client onto a monorail car while the monorail moved.
+
+   - Colors: when the client joined for the first time, the host wrote the colors of the client
+     from the slot (1, 18, 15) to the color book. We changed the colors in the color book to 2, 4
+     and 6. When the client joined again after a game load, the host gave the client the colors
+     2, 4 and 6.
+   - Items: the client left with the three items. After a game load, the body had the three
+     items. When the client joined again, the client had the three items.
+   - Body on a monorail car: after a game load, the body was on its monorail car, and the monorail
+     moved. The body moved 85 m with the monorail car. Then the client joined again at the body,
+     on the monorail car.
+   - The client saw the moving monorail and the time of day from the save.
+   - When a player leaves, the game turns the body by approximately 180 degrees. When the player
+     joins again, the game uses the direction of the body. The game also turns the body when there
+     is no game load. The Diary keeps the body as the game made it.
+   - We did not test these host actions: sit on the ground and crouch. The host on KITSUBITO has
+     no player input.
 
 ## Open questions
 
