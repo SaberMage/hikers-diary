@@ -255,11 +255,22 @@ slideshow (revisions b and c).
       - There are 21 `PropZone` objects. They are rooms, radio dead zones and inventory zones.
         None of them is for water.
       - The depth data is `footstep water depth sample data`. At the ocean magnet point, the
-        depth is 0 and the patch index is -1. Thus, the point is outside the depth data.
-      - Thus the game has no pusher for lakes and rivers. Step 3 must use the depth data, not
-        a pusher magnet point.
+        patch index is -1. Thus, the point is outside the patches of the depth data.
+      - The game has no pusher for lakes and rivers.
    2. Find the maximum depth at which a player can reach an object. Measure the depth where the
       game stops a player in the water.
+      Result (2026-11-28, test aid `WaterProbe`):
+      - `GetDepth` is not a depth. It gives the y of the point minus the y of the water surface.
+        At a point below the surface, the value is negative.
+      - The test aid measured the water depth at the ground at intervals of 4 m on the map. The maximum
+        depth on the map is 1.15 m. All the points that are deeper than 1 m are on
+        `Ocean/FloatFloorCollider`. The top of this floor is at y = -0.8. The ocean surface is
+        between y = -0.45 and y = 0.35.
+      - The rivers have no point that is deeper than 1 m.
+      - The test aid moved the host to the 6 deepest points. At each point, the host stood on
+        the floor (host y = -0.05). The host did not go below the floor.
+      - Thus, a player can stand at all points in the water on the map. Steps 3 and 4 have no
+        object to move. The operator must decide what to do with #8.
    3. At the start of the session, make the host read the depth at each loose prop. If the depth
       is more than the maximum depth from step 2, make the host move the prop to the nearest
       shore. To find the nearest shore, use the magnet point of the nearest pusher.

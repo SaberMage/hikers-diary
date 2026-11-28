@@ -78,6 +78,7 @@ public sealed class DiaryHost : MonoBehaviour
         CarHoldPatch.Release();
         CullTripStep();
         if (Scenario) { ScenarioStep(); TrackStep(); }
+        if (WaterProbe) WaterProbeStep(host);
 
         if (Time.time >= _nextSnapshot)
         {
@@ -959,6 +960,85 @@ public sealed class DiaryHost : MonoBehaviour
             if (pinned != null) items[slot] = KeyOf(pinned);
         }
         return items;
+    }
+
+    // Test aid for T8 step 2 (#8): find where the game stops a player in deep water.
+    // ponytail: diagnostic only. Remove it when T8 step 3 uses these facts.
+    internal static bool WaterProbe;
+    private static List<Vector3> _probe;
+    private static int _probeStep;
+    private static float _probeAt;
+
+    // The IL2CPP build does not include LayerMask.GetMask and NameToLayer. It includes LayerToName.
+    private static int _notPlayer;
+    private static int NotPlayer
+    {
+        get
+        {
+            if (_notPlayer != 0) return _notPlayer;
+            _notPlayer = ~0;
+            for (int i = 0; i < 32; i++) if (LayerMask.LayerToName(i) == "Player") _notPlayer = ~(1 << i);
+            return _notPlayer;
+        }
+    }
+
+    private static bool GroundAt(Vector3 at, out RaycastHit hit) =>
+        Physics.Raycast(new Vector3(at.x, 150f, at.z), Vector3.down, out hit, 400f, NotPlayer, QueryTriggerInteraction.Ignore);
+
+    private static string Ground(Vector3 at) => GroundAt(at, out RaycastHit hit)
+        ? $"ground {hit.point.y:0.00} on {PathOf(hit.collider.transform)} (layer {LayerMask.LayerToName(hit.collider.gameObject.layer)})" : "no ground";
+
+    private static void WaterProbeStep(PlayerCharacter host)
+    {
+        var data = Resources.FindObjectsOfTypeAll<WaterDepthSampleData>().FirstOrDefault();
+        if (data == null) { WaterProbe = false; Plugin.Logger.LogInfo("Diary: water probe: no depth data."); return; }
+        if (_probe == null)
+        {
+            if (_probeAt == 0f) { _probeAt = Time.time + 10f; return; }
+            if (Time.time < _probeAt) return;
+            // A measurement shows that GetDepth gives the y of the point minus the y of the water surface.
+            // At a point below the surface, the value is negative.
+            var hist = new int[8];
+            var deep = new List<(float D, Vector3 P, bool River)>();
+            for (float x = data.worldMin.x; x <= data.worldMax.x; x += 4f)
+                for (float z = data.worldMin.y; z <= data.worldMax.y; z += 4f)
+                {
+                    if (!GroundAt(new Vector3(x, 0f, z), out RaycastHit hit)) continue;
+                    float d = -data.GetDepth(hit.point, out int patch, out bool river);
+                    if (d < 0.25f) continue;
+                    hist[Mathf.Min(7, (int)(d / 0.5f))]++;
+                    if (d > 1f) deep.Add((d, hit.point, river));
+                }
+            Plugin.Logger.LogInfo($"Diary: water probe: cells (4 m) by depth at the ground, 0.5 m bins from 0: [{string.Join(", ", hist)}], cells deeper than 1 m: {deep.Count}.");
+            _probe = new List<Vector3>();
+            foreach (var c in deep.OrderByDescending(c => c.D))
+            {
+                if (_probe.Any(q => (new Vector2(q.x - c.P.x, q.z - c.P.z)).magnitude < 60f)) continue;
+                Plugin.Logger.LogInfo($"Diary: water probe: deep point {_probe.Count}: depth {c.D:0.00} at {c.P}, river {c.River}, {Ground(c.P)}.");
+                _probe.Add(c.P + Vector3.up * c.D);
+                if (_probe.Count == 6) break;
+            }
+            _probeStep = 0;
+            _probeAt = Time.time;
+            return;
+        }
+        if (Time.time < _probeAt || _probeStep > _probe.Count * 2) return;
+        int n = _probeStep / 2;
+        if (_probeStep % 2 == 0 && n < _probe.Count)
+        {
+            Vector3 to = _probe[n] + Vector3.up * 1f;
+            host.grease.Teleport(to, host.transform.rotation);
+            Plugin.Logger.LogInfo($"Diary: water probe: point {n}: host moved to {to} (surface {_probe[n].y:0.00}).");
+        }
+        else if (_probeStep % 2 == 1)
+        {
+            Vector3 h = host.transform.position;
+            Plugin.Logger.LogInfo($"Diary: water probe: point {n}: after 8 s host at {h}, camera {(Camera.main != null ? Camera.main.transform.position.y.ToString("0.00") : "none")}, surface {_probe[n].y:0.00}, " +
+                $"depth at host {data.GetDepth(h, out _, out _):0.00}, {Ground(h)}.");
+        }
+        if (_probeStep == _probe.Count * 2) Plugin.Logger.LogInfo("Diary: water probe: done.");
+        _probeStep++;
+        _probeAt = Time.time + 8f;
     }
 
     /// <summary>T8 step 1 (#8): This method logs the water pushers, the prop zones, and the depth at each magnet point.</summary>
