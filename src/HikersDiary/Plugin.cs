@@ -35,6 +35,8 @@ public sealed class Plugin : BasePlugin
             "Host only: make one test body at the host position, to test the body save and restore on one computer.").Value;
         DiaryHost.FlipLookoutLight = Config.Bind("Spike", "FlipLookoutLight", false,
             "Host-only test aid: at the first snapshot, change the state of the red lookout light. Use it to make sure that the game load keeps the light state.").Value;
+        DiaryHost.CullTrip = Config.Bind("Spike", "CullTrip", false,
+            "Host-only test aid for T4b: after a PropOnPlatform drop, move the host 400 m away and back, and log the prop and the car.").Value;
         DiaryHost.StartChairlift = Config.Bind("Spike", "StartChairlift", false,
             "Host-only test aid for T4b: after the game load, start the chairlift (the game dev helper PeckDevHelper, as if the key is in its slot).").Value;
         DiaryHost.PropOnPlatform = Config.Bind("Spike", "PropOnPlatform", "",
@@ -54,6 +56,7 @@ public sealed class Plugin : BasePlugin
         harmony.PatchAll(typeof(BodyMatchLog));
         ColorPatches.Open(DiaryHost.StoreDir);
         harmony.PatchAll(typeof(ColorPatches));
+        harmony.PatchAll(typeof(CarHoldPatch));
         Logger.LogInfo($"Diary: {harmony.GetPatchedMethods().Count()} hooks installed.");
         Logger.LogInfo($"Diary armed. Store: {DiaryHost.StoreDir}");
     }

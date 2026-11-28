@@ -21,6 +21,7 @@ public sealed class DiaryHost : MonoBehaviour
     internal static bool FlipLookoutLight;
     internal static string PropOnPlatform;
     internal static bool StartChairlift;
+    internal static bool CullTrip;
     private static bool _chairliftStarted;
     private static bool _propDropped;
     private static bool _movedToPole;
@@ -70,6 +71,8 @@ public sealed class DiaryHost : MonoBehaviour
         if (_platformPending.Count > 0 && Time.fixedTime >= _platformAt) RestorePlatformProps();
         if (!string.IsNullOrEmpty(PropOnPlatform) && !_propDropped && Time.fixedTime >= _platformAt + 8f) DropPropOnPlatform();
         if (_dropped != null && Time.time >= _dropCheckAt) CheckDrop();
+        CarHoldPatch.Release();
+        CullTripStep();
 
         if (Time.time >= _nextSnapshot)
         {
@@ -121,6 +124,13 @@ public sealed class DiaryHost : MonoBehaviour
             return;
         }
         _writable = true;
+        if (StartChairlift && !_chairliftStarted)
+        {
+            // Test aid: start the chairlift before the platform props, as a save with the key in its slot does.
+            _chairliftStarted = true;
+            PeckDevHelper.Trigger(new PeckDevHelper.UnlockRules { chairlift = true });
+            Plugin.Logger.LogInfo("Diary: test aid: chairlift started (PeckDevHelper).");
+        }
         if (save == null)
         {
             Plugin.Logger.LogInfo($"Diary: slot {slotUid} has no Diary file yet.");
@@ -130,13 +140,6 @@ public sealed class DiaryHost : MonoBehaviour
         RestoreProps(save.Props);
         RestoreBodies(save.Bodies, host);
         RestoreVehicles(save.Vehicles);
-        if (StartChairlift && !_chairliftStarted)
-        {
-            // Test aid: start the chairlift before the platform props, as a save with the key in its slot does.
-            _chairliftStarted = true;
-            PeckDevHelper.Trigger(new PeckDevHelper.UnlockRules { chairlift = true });
-            Plugin.Logger.LogInfo("Diary: test aid: chairlift started (PeckDevHelper).");
-        }
         // [impl->REQ-PLATFORM-PROPS] The vehicles move to their saved state in the next physics steps.
         // Then Update moves the props on the platforms (RestorePlatformProps).
         _platformAt = Time.fixedTime + 2f * Time.fixedDeltaTime;
@@ -292,11 +295,21 @@ public sealed class DiaryHost : MonoBehaviour
             return (kv.Key, v.x, v.y, v.z);
         }).ToList());
         bool late = Time.fixedTime >= _platformDeadline;
+        var carOf = new Dictionary<IntPtr, TrainCar>();
+        foreach (TrainCar c in Object.FindObjectsOfType<TrainCar>())
+            if (c.platformingBody != null) carOf[c.platformingBody.Pointer] = c;
         for (int i = _platformPending.Count - 1; i >= 0; i--)
         {
             (Prop p, PropRecord rec) = _platformPending[i];
-            // A parked platform is not in the world yet. Its props wait for it, until the deadline.
-            if (!late && parked.Contains(rec.Platform)) continue;
+            // A parked platform is not in the world yet: no player is near it, and nothing touches it.
+            // Hold its car loaded (CarHoldPatch). Its props wait for it.
+            if (!late && parked.Contains(rec.Platform))
+            {
+                if (platforms.TryGetValue(rec.Platform, out StickyPlatform wait) && wait.platformingBody != null
+                    && carOf.TryGetValue(wait.platformingBody.Pointer, out TrainCar hold))
+                    CarHoldPatch.Held[hold.Pointer] = Time.time + 10f;
+                continue;
+            }
             _platformPending.RemoveAt(i);
             // A home or a player that took the prop after RestoreProps (a body, the host) keeps it.
             if (p == null || !IsLoose(p) || parked.Contains(rec.Platform) || !platforms.TryGetValue(rec.Platform, out StickyPlatform sp))
@@ -321,6 +334,9 @@ public sealed class DiaryHost : MonoBehaviour
                 }
             }
             _platformFound++;
+            // When the prop touches the car, the game keeps the car loaded (TrainCar.UpdateCullState). Release the hold then.
+            if (sp.platformingBody != null && carOf.TryGetValue(sp.platformingBody.Pointer, out TrainCar held) && CarHoldPatch.Held.ContainsKey(held.Pointer))
+                CarHoldPatch.Watch.Add((p, held.Pointer));
             // The log shows the prop again 3 s later (CheckDrop).
             (_dropped, _droppedOn, _dropCheckAt) = (p, sp, Time.time + 3f);
             Plugin.Logger.LogInfo($"Diary: prop {PathOf(p.transform)} to {pos} on {rec.Platform} (platform at {pt.position}).");
@@ -346,6 +362,35 @@ public sealed class DiaryHost : MonoBehaviour
             $"stickyPlatform {(p.houseNetworkTransform?.stickyPlatform != null ? PathOf(p.houseNetworkTransform.stickyPlatform.transform) : "none")}, " +
             $"PlatformingBody {(pb != null ? $"yes, connected {(pb.connectedPlatform != null ? "yes" : "no")}, contacts {pb.contacts?.Count ?? -1}" : "no")}, " +
             $"kinematic {p.rb.isKinematic}, sleeping {p.rb.IsSleeping()}.");
+        if (CullTrip && _tripStep == 0) { _tripProp = p; _tripOn = _droppedOn; _tripStep = 1; _tripAt = Time.time; }
+    }
+
+    // Test aid for T4b: the host goes far from a platform and back. The log shows the prop and the car at each step.
+    private static Prop _tripProp;
+    private static StickyPlatform _tripOn;
+    private static int _tripStep;
+    private static float _tripAt;
+    private static Vector3 _tripHome;
+
+    private static void CullTripStep()
+    {
+        if (_tripStep == 0 || _tripStep > 4 || Time.time < _tripAt) return;
+        PlayerCharacter host = LocalPlayer();
+        Transform frame = Frame(_tripOn);
+        TrainCar car = Object.FindObjectsOfType<TrainCar>().FirstOrDefault(c => c.platformingBody == _tripOn.platformingBody);
+        Prop p = _tripProp;
+        Plugin.Logger.LogInfo($"Diary: test aid: trip step {_tripStep}: host at {host.transform.position}, car at {frame.position}, " +
+            $"car culled {(car != null ? car.cullState.ToString() : "?")}, prop at {(p != null ? p.transform.position.ToString() : "gone")}, " +
+            $"relative {(p != null ? frame.InverseTransformPoint(p.transform.position).ToString() : "-")}, " +
+            $"stickyPlatform {(p?.houseNetworkTransform?.stickyPlatform != null ? "yes" : "none")}, kinematic {p?.rb?.isKinematic}.");
+        var cars = Object.FindObjectsOfType<TrainCar>().Where(c => c.platformingBody != null && PathOf(c.transform).Contains("ChairLift")).ToList();
+        var live = cars.Where(c => !c.cullState).Select(c => (c.platformingBody.rb.position - host.transform.position).magnitude).OrderBy(d => d).ToList();
+        Plugin.Logger.LogInfo($"Diary: test aid: trip step {_tripStep}: {cars.Count} chairlift cars, {live.Count} not culled, distances to host [{string.Join(", ", live.Select(d => d.ToString("0")))}], " +
+            $"parked {cars.Count(c => c.platformingBody.rb.position.y < -50f)}.");
+        if (_tripStep == 1) { _tripHome = host.transform.position; host.grease.Teleport(_tripHome + new Vector3(400f, 50f, 0f), host.transform.rotation); }
+        if (_tripStep == 3) host.grease.Teleport(_tripHome, host.transform.rotation);
+        _tripStep++;
+        _tripAt = Time.time + (_tripStep == 2 || _tripStep == 4 ? 15f : 1f);
     }
 
     /// <summary>Test aid for T4b: drops one loose prop onto a moving platform, because a single-PC test has no player input.</summary>
@@ -802,4 +847,47 @@ internal static class SessionStopPatches
 
     [HarmonyPrefix, HarmonyPatch(nameof(HouseNetworkManager.OnApplicationQuit))]
     private static void BeforeQuit() => DiaryHost.Snapshot("quit");
+}
+
+/// <summary>
+/// After a game load, keeps a train car loaded until the restored prop touches it (T4b, #4).
+/// The game unloads a car (parks it below the ground, colliders off) when nothing touches it and no
+/// player is near it. A car with a contact (a prop or a player) stays loaded.
+/// </summary>
+[HarmonyPatch(typeof(TrainCar), nameof(TrainCar.UpdateCullState))]
+internal static class CarHoldPatch
+{
+    // The held cars, and the time when each hold ends at the latest.
+    internal static readonly Dictionary<IntPtr, float> Held = new();
+    // The restored props on a held car. The hold ends when the prop touches a platform.
+    internal static readonly List<(Prop Prop, IntPtr Car)> Watch = new();
+
+    // [impl->REQ-PLATFORM-PROPS]
+    [HarmonyPrefix]
+    private static bool Before(TrainCar trainCar, NetworkedTrain.CullMode cullMode)
+    {
+        if (trainCar == null || !Held.ContainsKey(trainCar.Pointer)) return true;
+        if (trainCar.cullState) TrainCar.SetCullState(trainCar, false, cullMode);
+        return false;
+    }
+
+    // [impl->REQ-PLATFORM-PROPS]
+    internal static void Release()
+    {
+        if (Held.Count == 0) return;
+        for (int i = Watch.Count - 1; i >= 0; i--)
+        {
+            (Prop p, IntPtr car) = Watch[i];
+            PlatformingBody pb = p != null ? p.GetComponent<PlatformingBody>() : null;
+            if (p != null && (pb == null || pb.contacts == null || pb.contacts.Count == 0)) continue;
+            Watch.RemoveAt(i);
+            if (Held.Remove(car)) Plugin.Logger.LogInfo($"Diary: car hold released, the prop touches {(pb?.connectedPlatform != null ? "its platform" : "an object")}.");
+        }
+        foreach (IntPtr car in Held.Where(kv => Time.time >= kv.Value).Select(kv => kv.Key).ToList())
+        {
+            Held.Remove(car);
+            Watch.RemoveAll(w => w.Car == car);
+            Plugin.Logger.LogWarning("Diary: car hold ended after 10 s. The prop did not touch the car.");
+        }
+    }
 }

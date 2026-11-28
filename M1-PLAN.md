@@ -82,12 +82,23 @@ slideshow (revisions b and c).
    snapshot also showed the tile on the car. The host must be near the car. If the car has no
    colliders, a prop falls through the car.
 
-   A stopped chairlift keeps all its gondola cars at one parked position below the ground:
-   (133, -82, -64). The game moves a car out of that position only when the chairlift runs and
-   a player is near the chairlift. Each gondola car is a platform. Thus, the host does not move a
-   prop onto a parked platform. If a platform has the same position as a different platform, the
-   host identifies it as parked. Its props wait for it, for a maximum of 30 s. If the platform does
-   not move in that time, the props stay at the position from the game load.
+   The game unloads each train car that has no contact and no player near it (about 40 m). An
+   unloaded car has no colliders and is at one parked position below the ground. For the
+   chairlift, this position is (133, -82, -64). A car with a contact (a prop or a player) stays
+   loaded at all distances (`TrainCar.UpdateCullState`). Thus, during a session, a prop on a car
+   stays on it.
+
+   After a game load, a prop does not touch its car yet. Thus, the game unloads a car that is far
+   from all players.
+
+   Each gondola car has a platform. If two platforms have the same position, the host finds that
+   the two platforms are parked. Then the host loads the car of each parked platform again
+   (`CarHoldPatch`). When the car is not parked, the host moves the prop onto it. When the prop
+   touches the car, the host stops the hold, and the game keeps the car loaded. If the prop does
+   not touch the car in 10 s, the hold stops and the log shows a warning.
+
+   If a platform stays parked for 30 s, its props stay at the position from the game load. The log
+   shows these props as not restored.
 
    Result on 2026-11-27 for the gondola: a test aid (`StartChairlift`) started the chairlift with
    the game helper `PeckDevHelper`. In the game, a player starts the chairlift with the chairlift
@@ -96,6 +107,15 @@ slideshow (revisions b and c).
    position, and 60 cars were parked. The peg tile was on its car, 0.1 m or less from its saved
    position on the car. 3 s later and in the next two snapshots, the game still had the peg tile on
    the car.
+
+   We did a test on 2026-11-27 with a gondola car far from the host. A test aid (`CullTrip`) moved
+   the host 400 m from the car that held the peg tile. The car stayed loaded, and the peg tile
+   stayed on it.
+
+   Then we made a snapshot. At the next game load, the host was 370 m from the car, and 63 cars
+   were parked. The host loaded the car again and moved the peg tile onto it. Then the host stopped
+   the hold. In the next three snapshots, the peg tile was on its car, 5 mm or less from its
+   position in the first snapshot.
 
    The carousel has no `StickyPlatform`. Thus, T4b does not apply to the carousel.
 <!-- [doc->REQ-PLAYER-STATE] -->
