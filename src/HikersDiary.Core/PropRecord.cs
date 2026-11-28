@@ -44,3 +44,29 @@ public sealed class PropIndex
         return null;
     }
 }
+
+/// <summary>Finds the moving platforms that are not in the world yet (T4b, #4).</summary>
+public static class PlatformPark
+{
+    /// <summary>
+    /// The game keeps the cars of a stopped chairlift at one parked position below the ground. A
+    /// platform that has the same position as a different platform (within 1 cm) is parked.
+    /// Returns the keys of the parked platforms.
+    /// </summary>
+    // [impl->REQ-PLATFORM-PROPS]
+    public static HashSet<string> Parked(IReadOnlyList<(string Key, float X, float Y, float Z)> platforms)
+    {
+        var parked = new HashSet<string>();
+        // ponytail: O(n^2), the game has 79 platforms.
+        for (int i = 0; i < platforms.Count; i++)
+            for (int j = i + 1; j < platforms.Count; j++)
+            {
+                var (a, b) = (platforms[i], platforms[j]);
+                float dx = a.X - b.X, dy = a.Y - b.Y, dz = a.Z - b.Z;
+                if (dx * dx + dy * dy + dz * dz > 0.0001f) continue;
+                parked.Add(a.Key);
+                parked.Add(b.Key);
+            }
+        return parked;
+    }
+}

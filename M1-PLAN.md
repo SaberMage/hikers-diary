@@ -82,9 +82,20 @@ slideshow (revisions b and c).
    snapshot also showed the tile on the car. The host must be near the car. If the car has no
    colliders, a prop falls through the car.
 
-   Result for the gondola: we did not do the test. In the test slot, all 64 gondola cars are at one
-   position below the ground: (133, -82, -64). When we set a speed value of 2 in the Diary file, the
-   cars did not move.
+   A stopped chairlift keeps all its gondola cars at one parked position below the ground:
+   (133, -82, -64). The game moves a car out of that position only when the chairlift runs and
+   a player is near the chairlift. Each gondola car is a platform. Thus, the host does not move a
+   prop onto a parked platform. If a platform has the same position as a different platform, the
+   host identifies it as parked. Its props wait for it, for a maximum of 30 s. If the platform does
+   not move in that time, the props stay at the position from the game load.
+
+   Result on 2026-11-27 for the gondola: a test aid (`StartChairlift`) started the chairlift with
+   the game helper `PeckDevHelper`. In the game, a player starts the chairlift with the chairlift
+   key. `PropOnPlatform` moved the host near the gondola car and dropped a peg tile onto the car.
+   The game attached the peg tile to the car. After the game load, the car was at a different
+   position, and 60 cars were parked. The peg tile was on its car, 0.1 m or less from its saved
+   position on the car. 3 s later and in the next two snapshots, the game still had the peg tile on
+   the car.
 
    The carousel has no `StickyPlatform`. Thus, T4b does not apply to the carousel.
 <!-- [doc->REQ-PLAYER-STATE] -->
