@@ -33,6 +33,8 @@ public sealed class Plugin : BasePlugin
         DiaryHost.StoreDir = System.IO.Path.Combine(Paths.ConfigPath, "HikersDiary");
         DiaryHost.MakeTestBody = Config.Bind("Spike", "MakeTestBody", false,
             "Host only: make one test body at the host position, to test the body save and restore on one computer.").Value;
+        DiaryHost.FlipLookoutLight = Config.Bind("Spike", "FlipLookoutLight", false,
+            "Host only test aid: at the first snapshot, change the state of the red lookout light, to test the light state across a game load.").Value;
         DiaryHost.AutoHost = Config.Bind("Spike", "AutoHost", false,
             "Test aid: at the title menu, host the save that was played last, for 2 players.").Value;
         DiaryHost.AutoJoinCode = Config.Bind("Spike", "AutoJoinCode", "",

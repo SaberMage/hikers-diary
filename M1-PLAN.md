@@ -53,8 +53,11 @@ slideshow (revisions b and c).
    Result on 2026-11-27: the vehicle map is in section 4.0 of the reference document. On the host,
    3 of 3 vehicles and the time went to their saved values. Before the game load, we changed the
    monorail distance in the Diary file by 50. After the load, the monorail stayed at that
-   distance. The time continued from the saved time. We did not
-   do the light test or the solo gondola test.
+   distance. The time continued from the saved time. In a light
+   test, a test aid changed the red lookout light from 1 to 0. After a game load, the light
+   had state 0. Thus, the game save keeps the light states. The host does not save
+   them.
+   The carousel is the solo gondola (the answer from the operator on 2026-11-27).
 5. **T5 — player state (#5).** Do the host first. The host has no body. Then do the clients
    with the T1 method.
 6. **T6 — colors (#6).**

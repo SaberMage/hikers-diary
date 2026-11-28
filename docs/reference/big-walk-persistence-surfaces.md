@@ -313,6 +313,10 @@ lookout lights are `SavableSystem.LookoutLightRed/Green/Blue/Yellow`.
 
 Owner: the server (host). Clients request with `[Command]`s. `[sig]`
 
+Test on 2026-11-27: the game has 26 saveable switch states (lights, doors, radio stations,
+gauntlet chambers). A test aid changed `LookoutLightRed` from 1 to 0. After a game load, the state
+was 0. Thus, the game save keeps the switch states. `[runtime]`
+
 ### 5.2 Time of day: `LobbyEnviroNetworking : NetworkBehaviour`
 
 | member | kind | meaning | source |

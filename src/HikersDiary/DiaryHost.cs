@@ -18,6 +18,7 @@ public sealed class DiaryHost : MonoBehaviour
     internal static string StoreDir;
     internal static bool MakeTestBody;
     internal static bool AutoHost;
+    internal static bool FlipLookoutLight;
     internal static string AutoJoinCode;
     internal static string AutoJoinPassword;
 
@@ -141,6 +142,7 @@ public sealed class DiaryHost : MonoBehaviour
                 c.headColorIndex, c.torsoColorIndex, c.legsColorIndex));
         }
         SaveProps(save.Props);
+        LogSwitchStates();
         SaveVehicles(save.Vehicles);
         save = save with { EnviroTicks = EnviroTicksNow() };
         try
@@ -222,6 +224,36 @@ public sealed class DiaryHost : MonoBehaviour
         int found = byKey["guid"] + byKey["scene"] + byKey["path"];
         Plugin.Logger.LogInfo($"Diary: restored {found} of {records.Count} props (guid {byKey["guid"]}, scene {byKey["scene"]}, " +
             $"path {byKey["path"]}; scene match with other path {pathDiffers}; taken from start home {unpinned}).");
+    }
+
+    // The last switch-state line in the log. The log shows a new line only when a state changes.
+    private static string _lastSwitchStates;
+    private static bool _lightFlipped;
+
+    /// <summary>
+    /// T4 light test: logs the state of each saveable switch (lights, doors, radio stations).
+    /// The game save keeps these states. Compare the line before and after a game load.
+    /// </summary>
+    private static void LogSwitchStates()
+    {
+        var parts = new List<string>();
+        foreach (TrackedPeckState s in Object.FindObjectsOfType<TrackedPeckState>())
+        {
+            if (s.savableSystem == SavableSystem.NotSavable) continue;
+            if (FlipLookoutLight && !_lightFlipped && s.savableSystem == SavableSystem.LookoutLightRed)
+            {
+                _lightFlipped = true;
+                int to = s.currentPeckContext.state == 0 ? 1 : 0;
+                s.SetState(to);
+                Plugin.Logger.LogInfo($"Diary: test aid: red lookout light set to state {to}.");
+            }
+            parts.Add($"{s.savableSystem}={s.currentPeckContext.state}");
+        }
+        parts.Sort(StringComparer.Ordinal);
+        string line = string.Join(", ", parts);
+        if (line == _lastSwitchStates) return;
+        _lastSwitchStates = line;
+        Plugin.Logger.LogInfo($"Diary: switch states ({parts.Count}): {line}.");
     }
 
     // The log shows the vehicle map one time for each run (T4 step 1).
