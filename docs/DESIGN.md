@@ -84,6 +84,14 @@ The game starts directly in the last save, and players change saves from text ch
       frame capture before revision (c).
 11. Revision (a) addition, 2026-11-27: when a session starts, the host moves each object that a
     player cannot reach in deep water to the nearest shore.
+12. Revision (b) addition, 2026-11-28: the game start.
+    - The first screen of the game stays: the "MICROPHONE DEVICE" panel, the "MICROPHONE
+      ACTIVITY" panel, the intro text from the developers, and the intro music. All the text
+      and lines are white on a black background. This rule changes spec 1 for the first screen.
+    - The continue button does not appear at the start. Behind the first screen, the latest save
+      loads and resumes. Then the game view of the idle player (the "drowsy view") increases to
+      full, and the intro music decreases to zero at the same time. Then the continue button
+      appears. The continue button starts the gameplay immediately.
 
 ## 4. Side project: local control seam (not in revisions a to c)
 
