@@ -299,12 +299,25 @@ These items are not in the scope: the join at start, the session history walk an
            with no exception. `SetParameter` returned `InvalidParameters` (run 3).
            `DelegateSupport.ConvertDelegate` cannot convert a delegate with a `ref` parameter.
            `LobbyInfo.detailsInfo` (a copy that the game keeps) is safe to read.
-         - Next step: call the EOS C API directly in `EOSSDK-Win64-Shipping.dll` (P/Invoke):
-           `EOS_Platform_GetLobbyInterface`, `EOS_Lobby_CreateLobbySearch`,
-           `EOS_LobbySearch_SetParameter`, `EOS_LobbySearch_Find` with a native callback,
-           `EOS_LobbySearch_GetSearchResultCount` and `EOS_LobbySearch_CopySearchResultByIndex`.
-           Read each `ApiVersion` from the `*_API_LATEST` constants of the wrapper. Then test
-           with KITSUBITO as the host.
+         Result of runs 4 to 8 (2026-11-28, HFENDULEAM and KITSUBITO, `EosLobbyNative`):
+         - The spike calls the EOS C API in `EOSSDK-Win64-Shipping.dll` (P/Invoke). The
+           interop assembly has no `*_API_LATEST` constants. The Cpp2IL dump shows that each
+           `ApiVersion` of the options is 1. The native callback works. The game did not stop,
+           on Windows and on Proton.
+         - A search by lobby ID finds the lobby of the other account, in the two directions.
+           The result has permission 1 (`JoinViaPresence`), join by ID enabled, and the
+           attributes `WORLD_NAME` (the save title), `WORLD_USERNAME` and
+           `WORLD_OWNER_PLATFORMID`. EOS gives the attribute keys in upper case.
+         - A search by `world_name` finds 0 lobbies (permission is not `PublicAdvertised`).
+         - The two game accounts are friends. During the gameplay, `CurrentLobbies` has the
+           session of the friend: code, user name, and `roomName` = the save title of the host.
+         - A bad code: `ConnectingMenu`, then the error menu `LobbyJoinFailed` 1.5 s after
+           `ConnectTo`. A bad password: `PasswordMenu` 3.1 s after `ConnectTo`, then the error
+           menu `NoConnectWrongPassword` 0.2 s after `SubmitPassword`.
+         - Not measured: `DiaryHost.HostSave` after a failed join. T3d-2 tests it.
+         - For T3d-2: resolve a title through `CurrentLobbies` (friend sessions), and a code
+           with no search. A title of a session that is not a friend session needs a
+           `PublicAdvertised` lobby. T3d-2 does not do it.
       2. **T3d-2 — join a friend session.** Plan the design from the spike result. The parts are
          these: the target (a local save, a friend session or a lobby search result), the password
          memory (the most recent password of each session, in the diary folder), the join from the
