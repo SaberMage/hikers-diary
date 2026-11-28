@@ -34,7 +34,14 @@ slideshow (revisions b and c).
 2. **T2 — Diary save (#2).** Write the save format and the atomic write in
    `HikersDiary.Core`. Add unit tests. Save a snapshot at an interval and when the session
    stops. Restore the state after the game completes its own load.
-3. **T3 — props (#3).**
+<!-- [doc->REQ-PROP-POSE] -->
+3. **T3 — props (#3).** The host saves the position and the rotation of each loose prop. A
+   prop is loose when no home and no player holds it. The keys are `Prop.savablePropGuid`,
+   then `NetworkIdentity.sceneId`, then the GameObject path. The host does not use a path
+   that two props have. After a game load, the host moves each prop to its saved position.
+   The host does not save a prop on a moving platform. The log shows that prop one time.
+   Result on 2026-11-27: on the host, 306 of 306 props went to their saved positions. One
+   prop that we moved by 3 m in the Diary file went to the new position. See the comment on #3.
 4. **T4 — runtime vehicle map, then vehicles, lights, time (#4).**
 5. **T5 — player state (#5).** Do the host first. The host has no body. Then do the clients
    with the T1 method.
@@ -46,7 +53,9 @@ slideshow (revisions b and c).
 
 1. Which identifier is the key: the EOS PUID or the Steam ID? T1 found the answer on
    2026-11-27: the EOS PUID.
-2. Is `NetworkIdentity.sceneId` stable across loads? Measure it in T3.
+2. Is `NetworkIdentity.sceneId` stable across loads? T3 found the answer on 2026-11-27: yes.
+   In two loads, all 306 loose props had the same `sceneId` and the same path. All 306 props
+   also have a `savablePropGuid`, so `savablePropGuid` is the key that the host uses.
 3. What is the second client for two-player tests? The answer on 2026-11-27: KITSUBITO
    (Ubuntu 24.04, Proton Experimental), with a second game account. With the test aids
    `Spike.AutoJoinCode` and `Spike.AutoJoinPassword`, the client joins a session automatically.

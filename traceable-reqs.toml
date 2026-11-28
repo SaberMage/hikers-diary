@@ -44,3 +44,8 @@ required_stages = ["doc", "impl", "unit"]
 id = "REQ-DIARY-SAVE"
 title = "The host keeps one versioned Diary save for each game slot, writes it atomically at an interval and when the host stops, never overwrites a file that it cannot read, and restores it after a game load (#2)"
 required_stages = ["doc", "impl", "unit"]
+
+[[requirements]]
+id = "REQ-PROP-POSE"
+title = "The host saves the position and the rotation of each loose prop, finds it again by savablePropGuid, then sceneId, then a unique GameObject path, and puts it back after a game load (#3)"
+required_stages = ["doc", "impl", "unit"]

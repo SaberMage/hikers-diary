@@ -198,9 +198,11 @@ set `currentData`.
   `AddPlayerForConnection` call is `HouseNetworkManager.AddPlayerDelayed`. `[CG]`
 - Thus props are scene objects that Mirror spawns with `NetworkServer.SpawnObjects`, and each has
   a `NetworkIdentity.sceneId` (INFERRED from `[CG]`).
-- `netId` changes each session. Stable keys, best first: `Prop.savablePropGuid` (only saveable
-  props), `NetworkIdentity.sceneId` (INFERRED: stable for one build of the scene), the GameObject
-  path (INFERRED).
+- `netId` changes each session. Stable keys, best first: `Prop.savablePropGuid`,
+  `NetworkIdentity.sceneId`, the GameObject path. We measured these keys on 2026-11-27 (T3, slot
+  `ModTests`). The slot has 306 loose props. Each one has a `savablePropGuid` and a `sceneId`. No two props have the
+  same `sceneId` or the same path. In two loads, the `sceneId` and the path of each prop did
+  not change. `[disk]` (two Diary files)
 - `ShellReference` = `{ushort ticket, uint netId, int index}` `[sig]`. It points to a component in a
   `SeaShell` (`poses`, `peckSwitches`, `propHomes`, `trackedPeckStates` lists) on a
   `NetworkIdentity`. `TicketOffice.tickets` maps `ushort` tickets to `ITicketed`. Because `netId` is

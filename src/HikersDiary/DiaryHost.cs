@@ -117,6 +117,7 @@ public sealed class DiaryHost : MonoBehaviour
             return;
         }
         RestoreBodies(save.Bodies, host);
+        RestoreProps(save.Props);
     }
 
     /// <summary>Writes the Diary file of the loaded slot. Also called when the host stops.</summary>
@@ -137,6 +138,7 @@ public sealed class DiaryHost : MonoBehaviour
             save.Bodies.Add(new BodyRecord(c.identifier, new[] { p.x, p.y, p.z }, new[] { r.x, r.y, r.z, r.w },
                 c.headColorIndex, c.torsoColorIndex, c.legsColorIndex));
         }
+        SaveProps(save.Props);
         try
         {
             DiaryStore.Write(_path, save);
@@ -146,7 +148,84 @@ public sealed class DiaryHost : MonoBehaviour
             Plugin.Logger.LogWarning($"Diary: snapshot failed: {e.Message}");
             return;
         }
-        Plugin.Logger.LogInfo($"Diary: snapshot ({reason}) of slot {_slotUid}, {save.Bodies.Count} bodies.");
+        Plugin.Logger.LogInfo($"Diary: snapshot ({reason}) of slot {_slotUid}, {save.Bodies.Count} bodies, {save.Props.Count} props.");
+    }
+
+    // This set holds the props on a moving platform that the log showed. The log shows each prop one time.
+    private static readonly HashSet<int> _platformPropsLogged = new();
+
+    // A prop is loose when no home (hand, pocket, slot) holds it and no player holds it.
+    private static bool IsLoose(Prop p) => p.currentHome == null && p.exclusiveHolder == null;
+
+    // [impl->REQ-PROP-POSE]
+    private static void SaveProps(List<PropRecord> into)
+    {
+        var props = Prop.allProps;
+        for (int i = 0; props != null && i < props.Count; i++)
+        {
+            Prop p = props[i];
+            if (p == null || !IsLoose(p)) continue;
+            // Out of scope for #3: a pose relative to a moving platform. The prop stays at its start position.
+            if (p.houseNetworkTransform != null && p.houseNetworkTransform.stickyPlatform != null)
+            {
+                if (_platformPropsLogged.Add(p.GetInstanceID()))
+                    Plugin.Logger.LogInfo($"Diary: prop {PathOf(p.transform)} is on a moving platform. Not saved.");
+                continue;
+            }
+            Transform t = p.transform;
+            Vector3 pos = t.position;
+            Quaternion r = t.rotation;
+            into.Add(new PropRecord(p.savablePropGuid ?? "", p.networkIdentity != null ? p.networkIdentity.sceneId : 0,
+                PathOf(t), new[] { pos.x, pos.y, pos.z }, new[] { r.x, r.y, r.z, r.w }));
+        }
+    }
+
+    // [impl->REQ-PROP-POSE]
+    private static void RestoreProps(List<PropRecord> records)
+    {
+        if (records.Count == 0) return;
+        var index = new PropIndex(records);
+        var byKey = new Dictionary<string, int> { ["guid"] = 0, ["scene"] = 0, ["path"] = 0 };
+        int pathDiffers = 0, unpinned = 0;
+        var props = Prop.allProps;
+        for (int i = 0; props != null && i < props.Count; i++)
+        {
+            Prop p = props[i];
+            if (p == null || p.exclusiveHolder != null) continue;
+            string path = PathOf(p.transform);
+            var hit = index.Find(p.savablePropGuid, p.networkIdentity != null ? p.networkIdentity.sceneId : 0, path);
+            if (hit == null) continue;
+            (PropRecord rec, string key) = hit.Value;
+            byKey[key]++;
+            // Open question 2 (is sceneId stable?): count the scene matches that have a different path.
+            if (key == "scene" && rec.Path != path) pathDiffers++;
+            // ponytail: if the game wrote its save after our last snapshot (10 s window), the game save wins.
+            // The game put a loose saveable prop in its start home. Remove it from that home first.
+            if (p.currentHome != null) { p.ServerSetUnpinned(); unpinned++; }
+            var pos = new Vector3(rec.Position[0], rec.Position[1], rec.Position[2]);
+            var rot = new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
+            // The server owns the prop transform. HouseNetworkTransform sends it to the clients.
+            p.transform.SetPositionAndRotation(pos, rot);
+            if (p.rb != null)
+            {
+                p.rb.position = pos;
+                p.rb.rotation = rot;
+                if (p.rb.isKinematic) continue;
+                p.rb.linearVelocity = Vector3.zero;
+                p.rb.angularVelocity = Vector3.zero;
+            }
+        }
+        int found = byKey["guid"] + byKey["scene"] + byKey["path"];
+        Plugin.Logger.LogInfo($"Diary: restored {found} of {records.Count} props (guid {byKey["guid"]}, scene {byKey["scene"]}, " +
+            $"path {byKey["path"]}; scene match with other path {pathDiffers}; taken from start home {unpinned}).");
+    }
+
+    private static string PathOf(Transform t)
+    {
+        var parts = new List<string>();
+        for (; t != null; t = t.parent) parts.Add(t.name);
+        parts.Reverse();
+        return string.Join("/", parts);
     }
 
     // [impl->REQ-BODY-SPIKE]

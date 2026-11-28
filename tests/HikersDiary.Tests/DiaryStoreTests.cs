@@ -10,6 +10,9 @@ public class DiaryStoreTests
     private static DiarySave Sample(string uid, int head = 4) => new(DiarySave.CurrentVersion, uid, new List<BodyRecord>
     {
         new("0123456789abcdef0123456789abcdef", new[] { 1f, 2f, 3f }, new[] { 0f, 0.7071f, 0f, 0.7071f }, head, 5, 6),
+    }, new List<PropRecord>
+    {
+        new("g-1", 0x1234UL, "World/Props/Lantern", new[] { 4f, 5f, 6f }, new[] { 0f, 0f, 0f, 1f }),
     });
 
     // [unit->REQ-BODY-SPIKE]
@@ -28,7 +31,22 @@ public class DiaryStoreTests
         Assert.Equal(body.Position, got.Position);
         Assert.Equal(body.Rotation, got.Rotation);
         Assert.Equal((4, 5, 6), (got.HeadColor, got.TorsoColor, got.LegsColor));
+        PropRecord prop = save.Props[0], gotProp = Assert.Single(read.Props);
+        Assert.Equal((prop.Guid, prop.SceneId, prop.Path), (gotProp.Guid, gotProp.SceneId, gotProp.Path));
+        Assert.Equal(prop.Position, gotProp.Position);
+        Assert.Equal(prop.Rotation, gotProp.Rotation);
         Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    // [unit->REQ-PROP-POSE]
+    [Fact]
+    public void Version1FileReadsWithNoProps()
+    {
+        string path = DiaryStore.PathFor(NewDir(), "old");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{\"Version\":1,\"SlotUid\":\"old\",\"Bodies\":[]}");
+
+        Assert.Empty(DiaryStore.Read(path)!.Props);
     }
 
     [Fact]

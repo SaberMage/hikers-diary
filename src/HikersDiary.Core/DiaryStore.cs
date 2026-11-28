@@ -4,13 +4,16 @@ namespace HikersDiary.Core;
 
 /// <summary>
 /// The Diary save of one game slot: the state that the game save does not keep.
-/// Later Requests add their lists here (props, vehicles, players). A missing list reads as null.
+/// Later Requests add their lists here (vehicles, players). DiaryStore reads a list that is
+/// missing in the file (an older version) as an empty list.
 /// </summary>
-public sealed record DiarySave(int Version, string SlotUid, List<BodyRecord> Bodies)
+public sealed record DiarySave(int Version, string SlotUid, List<BodyRecord> Bodies, List<PropRecord> Props)
 {
-    public const int CurrentVersion = 1;
+    /// <summary>Version 2 added <see cref="Props"/>.</summary>
+    public const int CurrentVersion = 2;
 
-    public static DiarySave Empty(string slotUid) => new(CurrentVersion, slotUid, new List<BodyRecord>());
+    public static DiarySave Empty(string slotUid) =>
+        new(CurrentVersion, slotUid, new List<BodyRecord>(), new List<PropRecord>());
 }
 
 /// <summary>
@@ -69,7 +72,7 @@ public static class DiaryStore
             if (save == null) continue;
             if (save.Version > DiarySave.CurrentVersion)
                 throw new InvalidDataException($"{p} is version {save.Version}. This mod reads version {DiarySave.CurrentVersion} or older.");
-            return save with { Bodies = save.Bodies ?? new List<BodyRecord>() };
+            return save with { Bodies = save.Bodies ?? new List<BodyRecord>(), Props = save.Props ?? new List<PropRecord>() };
         }
         throw new InvalidDataException($"Cannot read {path} or its backup.", first);
     }
