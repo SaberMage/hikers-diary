@@ -19,7 +19,7 @@
 
 [scan]
 # Every evidence location. A missing root makes evidence SILENTLY vanish from the trace.
-roots = ["src", "tests", "docs", "scripts", "CONTEXT.md", "README.md", "M1-PLAN.md"]
+roots = ["src", "tests", "docs", "scripts", "CONTEXT.md", "README.md", "M1-PLAN.md", "M2-PLAN.md"]
 
 [scan.extensions]
 # C# is not a built-in scanner language; without this mapping every .cs tag silently vanishes.
@@ -73,4 +73,9 @@ required_stages = ["doc", "impl", "unit"]
 [[requirements]]
 id = "REQ-PLAYER-STATE"
 title = "The host saves the position, facing, pose, held item and equipped items of its own player, and the items of each body. After a game load, it sets them again (#5)"
+required_stages = ["doc", "impl", "unit"]
+
+[[requirements]]
+id = "REQ-GAME-START"
+title = "At the first screen, the host loads the latest save behind it. The first screen stays white on black, and the game input controls it. The local player starts in the drowsy view without the snore. The black image becomes transparent while the intro music decreases to zero. Then the continue button starts the gameplay (#13)"
 required_stages = ["doc", "impl", "unit"]

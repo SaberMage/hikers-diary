@@ -47,11 +47,43 @@ These items are not in the scope: the join at start, the session history walk an
      action. `smoothSleepiness` then increases from 0 to 1 in 0.2 s.
    - Thus, the menu canvas does not stay by itself. The next spike moves the menu canvas to
      `DontDestroyOnLoad` before the game unloads `BaseScene`.
-2. **T2 — game start (#13).** Change the colors of the first screen to white on black. Hide the
-   continue button. Host the latest save. Keep the first screen over the game view. When the
-   save loads, increase the drowsy view to full. At the same time, decrease the intro music to
-   zero. Then show the continue button. Make the continue button start the gameplay.
-   When T2 starts, add `REQ-GAME-START` to `traceable-reqs.toml`.
+   Result of spikes 2 to 6 (2026-11-28, flat screen):
+   - The root canvas of `MicCheckMenu` is `MainMenu`. It is `ScreenSpaceOverlay` and has no
+     camera. When the host starts, the spike moves it to `DontDestroyOnLoad`. It stays after
+     the game unloads `BaseScene`, and the game view is visible behind it. The text is black,
+     and no black background is behind it.
+   - From 5 s to 9.5 s, `MenuVolumeMeter.Update` throws approximately 33 exceptions.
+   - The canvas does not make the frames slower. With the canvas, the frame time is 3.4 ms to
+     3.6 ms. Without the canvas, it is 3.4 ms to 4.2 ms. The start flow log caused the slow
+     frames that the operator saw, because it searched all objects in each frame.
+   - The snore is `PlayerAudioReferences.enterSleepSound`. `PlayerSleeper.Update` plays it in
+     the frame in which the sleep state starts. If the code sets `_wasSleeping` and
+     `_sleepSoundToggle` to true before it sets `forceSleeping`, the snore does not play, and
+     the drowsy view starts in 0.3 s.
+   - The game blocks the player input for a menu with `PlayerMenu.SetMenuOpen(bool)`
+     (`PlayerCharacter.menu`) and `PlayerMenu.BlockActionsPostMenu()`. It releases the mouse
+     cursor with `CursorManager.SetFree()` and locks it with `CursorManager.SetLocked()`.
+<!-- [doc->REQ-GAME-START] -->
+2. **T2 — game start (#13).** When T2 starts, add `REQ-GAME-START` to `traceable-reqs.toml`.
+   1. At the first screen, hide the continue button. Host the latest save. Use the steps of
+      `TryAutoHost`. If there is no save, do not change the first screen.
+   2. When the host starts, move the `MainMenu` canvas to `DontDestroyOnLoad`. Put a black
+      image behind the first screen. Make the text and the lines white. Disable
+      `MenuVolumeMeter` until the local player exists.
+   3. When the local player exists, start the drowsy view without the snore (see T1). Open the
+      menu for the local player (`SetMenuOpen(true)`, `CursorManager.SetFree()`). Then the
+      game input controls the first screen and the mouse cursor, not the player. The pause
+      menu must not open.
+      The game does not start the sleep state in the first 30 s after the game start. Thus, while
+      the first screen holds the input, a patch on `PlayerSleeper.Update` sets the full drowsy
+      view for the local player.
+   4. Then the black image becomes transparent gradually, and the intro music decreases to
+      zero at the same time. The player stays in the drowsy view.
+   5. Then the continue button appears. The continue button closes the first screen, closes
+      the menu for the local player (`SetMenuOpen(false)`, `BlockActionsPostMenu()`,
+      `CursorManager.SetLocked()`) and ends the drowsy view.
+   Open: it is possible that the `MainMenu` canvas is not visible in VR. The operator must test
+   it in VR.
 3. **T3 — save switch (#14).** Plan it after T2. For T3, the chat input (`TextChatInput`),
    the sleep (`PlayerSleeper`) and a save load from the gameplay are necessary.
 4. **T4 — hint signs (#15).** Plan it after T3.

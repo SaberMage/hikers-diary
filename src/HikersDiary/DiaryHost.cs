@@ -45,7 +45,7 @@ public sealed class DiaryHost : MonoBehaviour
 
     private void Update()
     {
-        StartFlow.Step();
+        GameStart.Step();
         if (!NetworkServer.active)
         {
             _slotUid = null;
@@ -183,7 +183,7 @@ public sealed class DiaryHost : MonoBehaviour
         }
     }
 
-    private static PlayerCharacter LocalPlayer()
+    internal static PlayerCharacter LocalPlayer()
     {
         var all = PlayerCharacter.allPlayerCharacters;
         if (all == null) return null;
@@ -1164,15 +1164,23 @@ public sealed class DiaryHost : MonoBehaviour
         if (_titleSeenAt < 0f) { _titleSeenAt = Time.time; return; }
         if (Time.time - _titleSeenAt < 3f) return;
         _autoHostTried = true;
+        HostLatestSave();
+    }
 
+    /// <summary>
+    /// Host the save that was played last, for 2 players, with the same steps as HostMenuConfirm.ActionStart
+    /// and PlayerCountMenu.ActionProceed. Returns false if the folder has no save.
+    /// </summary>
+    internal static bool HostLatestSave()
+    {
         var saves = SaveManager.GetAllSaveDatasInFolder();
         SaveData last = null;
         for (int i = 0; saves != null && i < saves.Count; i++)
             if (last == null || saves[i].lastPlayedTimeAsLong > last.lastPlayedTimeAsLong) last = saves[i];
         if (last == null)
         {
-            Plugin.Logger.LogWarning("Auto host: no save in the folder. Use the menu.");
-            return;
+            Plugin.Logger.LogWarning("Host the latest save: no save in the folder. Use the menu.");
+            return false;
         }
         BaseManager.instance.saveManager.currentData = last;
         SaveManager.WriteCurrentSaveData();
@@ -1180,8 +1188,9 @@ public sealed class DiaryHost : MonoBehaviour
         PlayerCountSwapper.playerCount = PlayerCount.PlayerCount2;
         // The host menu (MagicCode) makes the join code. The EOS lobby needs it.
         EOSPrivateLobbyManager.Instance.GenerateGameCode();
-        Plugin.Logger.LogInfo($"Auto host: save '{last.slotName}' ({last.filenameUid}), 2 players, join code {EOSPrivateLobbyManager.Instance.CurrentLobbyCode}.");
+        Plugin.Logger.LogInfo($"Host the latest save: save '{last.slotName}' ({last.filenameUid}), 2 players, join code {EOSPrivateLobbyManager.Instance.CurrentLobbyCode}.");
         NetworkMinder.StartHost();
+        return true;
     }
 
     private bool _joinSent;

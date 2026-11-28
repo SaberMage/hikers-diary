@@ -51,8 +51,10 @@ public sealed class Plugin : BasePlugin
             "Host-only test aid for T7: move the body of a client who left onto the first train car whose path contains this text. Empty = off.").Value;
         DiaryHost.WaterProbe = Config.Bind("Spike", "WaterProbe", false,
             "Host-only test aid for T8. After the game loads, it logs the water depth at the ground. Then it moves the host to the 6 deepest points and logs where the host stops.").Value;
-        StartFlow.LogFlow = Config.Bind("Spike", "LogStartFlow", false,
-            "This is a test aid for M2 T1. When one of these items changes in the first 240 s, the aid logs them: the menus, the scenes, the cameras, the menu music, and the sleepiness.").Value;
+        GameStart.Enabled = Config.Bind("Start", "GameStart", true,
+            "At the first screen, load the latest save behind it. The player starts in the drowsy view, and the continue button starts the gameplay (#13). False = the menus of the game.").Value;
+        GameStart.FadeSeconds = Config.Bind("Start", "FadeSeconds", 4f,
+            "The time in seconds in which the black image of the first screen becomes transparent and the intro music decreases to zero.").Value;
         DiaryHost.AutoHost = Config.Bind("Spike", "AutoHost", false,
             "Test aid: at the title menu, host the save that was played last, for 2 players.").Value;
         DiaryHost.AutoJoinCode = Config.Bind("Spike", "AutoJoinCode", "",
@@ -66,7 +68,7 @@ public sealed class Plugin : BasePlugin
         var harmony = new HarmonyLib.Harmony(Guid);
         harmony.PatchAll(typeof(SessionStopPatches));
         harmony.PatchAll(typeof(BodyMatchLog));
-        if (StartFlow.LogFlow) harmony.PatchAll(typeof(PickLog));
+        if (GameStart.Enabled) harmony.PatchAll(typeof(GameStartPatches));
         ColorPatches.Open(DiaryHost.StoreDir);
         harmony.PatchAll(typeof(ColorPatches));
         harmony.PatchAll(typeof(CarHoldPatch));
