@@ -56,6 +56,11 @@ title = "The host saves the state of each NetworkedTrain and each MovementDriver
 required_stages = ["doc", "impl", "unit"]
 
 [[requirements]]
+id = "REQ-PLATFORM-PROPS"
+title = "The host saves the position of each prop on a moving platform relative to its platform. After a game load, the host sets the vehicles first and then waits one or two physics steps. Then it moves each prop to its saved position and attaches the prop to its platform again (#4)"
+required_stages = []
+
+[[requirements]]
 id = "REQ-TIME-OF-DAY"
 title = "The host saves the Enviro date and time. After a game load, it sets them again (#4)"
 required_stages = ["doc", "impl", "unit"]

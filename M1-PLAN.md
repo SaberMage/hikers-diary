@@ -8,7 +8,7 @@ Milestone: #7. Requests: #1 to #6. Design: `docs/DESIGN.md`. Game facts:
 After a game load, these items are the same as before the load:
 
 - the loose props (#3)
-- the vehicles, the lights, and the time of day (#4)
+- the vehicles, the lights, the time of day, and the props on the moving platforms (#4)
 - the position, facing, pose, held item, and equipped items of each player (#5)
 - the bodies of players who left (#1)
 - the player colors, in all saves (#6)
@@ -40,6 +40,7 @@ slideshow (revisions b and c).
    then `NetworkIdentity.sceneId`, then the GameObject path. The host does not use a path
    that two props have. After a game load, the host moves each prop to its saved position.
    The host does not save a prop on a moving platform. The log shows that prop one time.
+   In T4b, the host saves these props.
    Result on 2026-11-27: on the host, 306 of 306 props went to their saved positions. One
    prop that we moved by 3 m in the Diary file went to the new position. See the comment on #3.
 <!-- [doc->REQ-VEHICLE-STATE] -->
@@ -58,6 +59,16 @@ slideshow (revisions b and c).
    had state 0. Thus, the game save keeps the light states. The host does not save
    them.
    The carousel is the solo gondola (the answer from the operator on 2026-11-27).
+<!-- [doc->REQ-PLATFORM-PROPS] -->
+   **T4b — props on moving platforms (#4). Do this task after T5.** The operator added it to M1 on
+   2026-11-27. The host saves the position of each prop on a moving platform
+   (`StickyPlatform`) relative to its platform. After a game load, the host does these steps in this order:
+   1. It sets the state of the vehicles again (T4).
+   2. It waits one or two physics steps.
+   3. It moves each prop to its saved position on its platform.
+   4. It attaches each prop to its platform again (`StickyPlatformer.SetPlatform`).
+
+   Test T4b on the monorail and on the gondola.
 <!-- [doc->REQ-PLAYER-STATE] -->
 5. **T5 — player state (#5).** Do the host first. The host has no body. Then do the clients
    with the T1 method. In each snapshot, the host saves these data of its own player:
