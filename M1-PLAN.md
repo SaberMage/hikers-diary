@@ -131,6 +131,12 @@ slideshow (revisions b and c).
    after the props on that platform, so that the host does not push the props from the platform.
    Then the host enters its seat again.
 
+   In the next physics step after the host moves an object onto a moving car, the car moves first.
+   Thus, the host aims each object at the position of the car one physics step later. The host also
+   attaches itself to the platform of the car and moves at the speed of the platform. Without these
+   two changes, the objects slid 7 to 13 cm on a monorail car at 3 m/s. With these changes, each
+   object moved 1.5 cm or less on a monorail car and on a gondola car.
+
    The host saves the train position from the values of the train (`_currentDistance`), not from
    the network values. The network values are older on a moving train.
 

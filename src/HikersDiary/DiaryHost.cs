@@ -335,6 +335,10 @@ public sealed class DiaryHost : MonoBehaviour
             Transform pt = Frame(sp);
             Vector3 pos = pt.TransformPoint(new Vector3(rec.Position[0], rec.Position[1], rec.Position[2]));
             Quaternion rot = pt.rotation * new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
+            // ponytail: in the next physics step, the car moves before the object does. Aim at the place of the car
+            // then. Measured slip without it: 7 to 9 cm at 3 m/s. A turn of the car in that step is not included.
+            Rigidbody car = sp.platformingBody != null ? sp.platformingBody.rb : null;
+            if (car != null) pos += car.GetPointVelocity(pos) * Time.fixedDeltaTime;
             pend.Place(pos, rot, sp);
             placedNow.Add(rec.Platform);
             _platformFound++;
@@ -572,6 +576,16 @@ public sealed class DiaryHost : MonoBehaviour
         PlayerNetworking net = host.playerNetworking;
         PlayerPose pose = net.poseReference.shellReference.isEmpty ? null : net.poseReference.shellReference.GetPose();
         Plugin.Logger.LogInfo($"Diary: track {_trackStep}: host {Where(host.transform.position)}, sitting {net.isSitting}, pose {(pose != null ? PathOf(pose.transform) : "none")}, head {host.head.headState}.");
+        TrainCar near = cars.OrderBy(c => (c.platformingBody.rb.position - host.transform.position).sqrMagnitude).FirstOrDefault();
+        Camera cam = Camera.main;
+        if (near != null && cam != null)
+        {
+            Transform f = near.platformingBody.rb.transform;
+            Vector3 camDir = f.InverseTransformDirection(cam.transform.forward);
+            Plugin.Logger.LogInfo($"Diary: track {_trackStep}: host yaw on car {(Quaternion.Inverse(f.rotation) * host.transform.rotation).eulerAngles.y:0.00}, " +
+                $"camera direction on car ({camDir.x:0.000}, {camDir.y:0.000}, {camDir.z:0.000}), camera yaw on car {Mathf.Atan2(camDir.x, camDir.z) * Mathf.Rad2Deg:0.00}, " +
+                $"look spin {host.head.runningTotalLookSpin:0.00}.");
+        }
         foreach (Corpse c in Corpse.allCorpses?.ToArray() ?? Array.Empty<Corpse>())
             if (c != null) Plugin.Logger.LogInfo($"Diary: track {_trackStep}: body {c.identifier} {Where(c.transform.position)}.");
         for (int n = 2; n <= 5; n++)
@@ -789,20 +803,28 @@ public sealed class DiaryHost : MonoBehaviour
         {
             // Index 0: the loop below goes from the end, so the host comes after the props.
             _platformPending.Insert(0, new Pending("host", new PropRecord("", 0, "", rec.Position, rec.Rotation, rec.Platform), () => true,
-                (at, to, _) => PlaceHost(host, rec, at, to)));
+                (at, to, sp) => PlaceHost(host, rec, at, to, sp)));
             Plugin.Logger.LogInfo($"Diary: restored host items [{string.Join(", ", found)}] of {rec.Items.Count}. The host waits for its platform {rec.Platform}.");
             return;
         }
-        string pose = PlaceHost(host, rec, pos, rot);
+        string pose = PlaceHost(host, rec, pos, rot, null);
         Plugin.Logger.LogInfo($"Diary: restored host at {pos}, head {head}, items [{string.Join(", ", found)}] of {rec.Items.Count}, " +
             $"pose {pose}, sitting {rec.Sitting}, crouch {rec.Crouch:0.00}.");
     }
 
     /// <summary>Moves the host, then enters the saved pose, the sit or the crouch. Returns the pose path or "none".</summary>
-    private static string PlaceHost(PlayerCharacter host, PlayerRecord rec, Vector3 pos, Quaternion rot)
+    private static string PlaceHost(PlayerCharacter host, PlayerRecord rec, Vector3 pos, Quaternion rot, StickyPlatform sp)
     {
         PlayerNetworking net = host.playerNetworking;
         host.grease.Teleport(pos, rot);
+        if (sp != null)
+        {
+            // Attach the host to its platform now, with the platform velocity. Else the host slides on a moving car
+            // until the game attaches it.
+            host.platformer?.SetPlatform(sp);
+            Rigidbody prb = sp.platformingBody != null ? sp.platformingBody.rb : null;
+            if (host.rb != null && prb != null) host.rb.linearVelocity = prb.GetPointVelocity(pos);
+        }
         // [impl->REQ-PLAYER-STATE] Set the head after the teleport. The teleport resets the head tilt.
         var head = new Vector2(rec.Head[0], rec.Head[1]);
         host.head.headState = head;
