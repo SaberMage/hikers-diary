@@ -244,6 +244,20 @@ slideshow (revisions b and c).
    Steps:
    1. In the game, log each `ZonePusher`, `PropZone` and `OceanPusher`: the colliders, the
       magnet point and the speed.
+      Result (2026-11-28, `LogWaterMap` in `DiaryHost`):
+      - There is one `OceanPusher`, on `Ocean/FloatFloorCollider`. Its collider is a floor of
+        2500 m by 2500 m at y = -1.3. Its magnet point is (50, 0, -350) and its speed is 1. Thus,
+        it is possible that the game already pushes the props on this floor toward the island.
+        We did not test this.
+      - There are two `ZonePusher` objects, and both are off at the start of the session. They
+        are on the intro cage (`IntroCage/CageToggleable` and `IntroCage/WalkwayCageToggleable`)
+        and have a `speed` of 10 and a `magnetDuration` of 10. They are not for water.
+      - There are 21 `PropZone` objects. They are rooms, radio dead zones and inventory zones.
+        None of them is for water.
+      - The depth data is `footstep water depth sample data`. At the ocean magnet point, the
+        depth is 0 and the patch index is -1. Thus, the point is outside the depth data.
+      - Thus the game has no pusher for lakes and rivers. Step 3 must use the depth data, not
+        a pusher magnet point.
    2. Find the maximum depth at which a player can reach an object. Measure the depth where the
       game stops a player in the water.
    3. At the start of the session, make the host read the depth at each loose prop. If the depth

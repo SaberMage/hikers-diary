@@ -210,6 +210,7 @@ public sealed class DiaryHost : MonoBehaviour
             return;
         }
         _writable = true;
+        LogWaterMap();
         if (save == null) StartAids();
         if (save == null)
         {
@@ -958,6 +959,31 @@ public sealed class DiaryHost : MonoBehaviour
             if (pinned != null) items[slot] = KeyOf(pinned);
         }
         return items;
+    }
+
+    /// <summary>T8 step 1 (#8): This method logs the water pushers, the prop zones, and the depth at each magnet point.</summary>
+    // ponytail: diagnostic only. Remove it when T8 step 3 uses these facts.
+    private static void LogWaterMap()
+    {
+        var depth = Resources.FindObjectsOfTypeAll<WaterDepthSampleData>().FirstOrDefault();
+        string Depth(Vector3 at)
+        {
+            if (depth == null) return "no depth data";
+            float d = depth.GetDepth(at, out int patch, out bool river);
+            return $"depth {d:0.00} (patch {patch}, river {river})";
+        }
+        string Cols(Component c) => string.Join("; ", c.GetComponents<Collider>().Select(x => $"{x.GetIl2CppType().Name} {x.bounds.center} size {x.bounds.size}"));
+        foreach (ZonePusher z in Resources.FindObjectsOfTypeAll<ZonePusher>())
+            Plugin.Logger.LogInfo($"Diary: water map: ZonePusher {PathOf(z.transform)}, active {z.isActiveAndEnabled}, zone {(z.propZone != null ? PathOf(z.propZone.transform) : "none")}, " +
+                $"magnet {z.magnetPoint} {Depth(z.magnetPoint)}, speed {z.speed}, duration {z.magnetDuration}.");
+        foreach (PropZone z in Object.FindObjectsOfType<PropZone>())
+            Plugin.Logger.LogInfo($"Diary: water map: PropZone {PathOf(z.transform)}, colliders [{Cols(z)}], contacts {z.contacts?.Count ?? 0}, radio dead {z.isRadioDeadZone}.");
+        foreach (OceanPusher o in Object.FindObjectsOfType<OceanPusher>())
+        {
+            var cols = o.myColliders == null ? "" : string.Join("; ", o.myColliders.Where(x => x != null).Select(x => $"{PathOf(x.transform)} {x.bounds.center} size {x.bounds.size}"));
+            Plugin.Logger.LogInfo($"Diary: water map: OceanPusher {PathOf(o.transform)}, colliders [{cols}], magnet {o.magnetPoint} {Depth(o.magnetPoint)}, speed {o.speed}.");
+        }
+        Plugin.Logger.LogInfo($"Diary: water map: depth data {(depth != null ? depth.name : "none")}.");
     }
 
     private static string PathOf(Transform t)
