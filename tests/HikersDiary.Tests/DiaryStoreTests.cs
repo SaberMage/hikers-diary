@@ -13,10 +13,14 @@ public class DiaryStoreTests
     }, new List<PropRecord>
     {
         new("g-1", 0x1234UL, "World/Props/Lantern", new[] { 4f, 5f, 6f }, new[] { 0f, 0f, 0f, 1f }),
-    });
+    }, new List<VehicleRecord>
+    {
+        new("train", "World/Monorail", 2, 15.5f, 3f, 4f),
+    }, 638_000_000_000_000_000L);
 
     // [unit->REQ-BODY-SPIKE]
     // [unit->REQ-DIARY-SAVE]
+    // [unit->REQ-TIME-OF-DAY]
     [Fact]
     public void RoundTripKeepsEveryField()
     {
@@ -35,7 +39,23 @@ public class DiaryStoreTests
         Assert.Equal((prop.Guid, prop.SceneId, prop.Path), (gotProp.Guid, gotProp.SceneId, gotProp.Path));
         Assert.Equal(prop.Position, gotProp.Position);
         Assert.Equal(prop.Rotation, gotProp.Rotation);
+        Assert.Equal(save.Vehicles![0], Assert.Single(read.Vehicles!));
+        Assert.Equal(save.EnviroTicks, read.EnviroTicks);
         Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    // [unit->REQ-VEHICLE-STATE]
+    // [unit->REQ-TIME-OF-DAY]
+    [Fact]
+    public void Version2FileReadsWithNoVehiclesAndNoTime()
+    {
+        string path = DiaryStore.PathFor(NewDir(), "v2");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{\"Version\":2,\"SlotUid\":\"v2\",\"Bodies\":[],\"Props\":[]}");
+
+        DiarySave read = DiaryStore.Read(path)!;
+        Assert.Empty(read.Vehicles!);
+        Assert.Equal(0, read.EnviroTicks);
     }
 
     // [unit->REQ-PROP-POSE]

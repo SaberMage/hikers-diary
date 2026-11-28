@@ -232,6 +232,20 @@ No class or string has the name gondola or monorail. `[meta]` (search for `gondo
 The classes below are the networked spline movers. Which world object is which vehicle is
 INFERRED. At runtime, list `NetworkedTrain` and `MovementDriver` objects by GameObject name.
 
+### 4.0 Runtime vehicle map (T4, 2026-11-27)
+
+On the host, with slot `ModTests` and 2 players, the mod found these objects. `[runtime]`
+
+| class | GameObject path | `hasCable` | splines | cars | vehicle (INFERRED) |
+|---|---|---|---|---|---|
+| `NetworkedTrain` | `TrainSystem/TrainNew/TrainNetworking` | false | 1 | 15 | the monorail |
+| `NetworkedTrain` | `ChairLift/ChairliftTrainNew/NetworkedTrain` | true | 4 | 64 | the gondola (the cable cars) |
+| `MovementDriver` | `LandmarksPlayerCountAny/Carousel/Positioner/CarouselNetworking` | | | | the carousel |
+
+The mod did not find a third `NetworkedTrain` for the solo gondola. It is possible that the solo
+gondola is one of the 64 cable cars. It is also possible that the solo gondola uses a different
+class. Each path is unique, so the path is the key.
+
 ### 4.1 `NetworkedTrain : NetworkBehaviour` (train cars on splines, and cable vehicles with `hasCable`)
 
 | member | kind | meaning | source |
@@ -247,8 +261,11 @@ INFERRED. At runtime, list `NetworkedTrain` and `MovementDriver` objects by Game
 | `SetDistance(float)` | | writes only `_currentDistance`. No game caller. `FixedUpdate` overwrites it | `[ISIL]` `[CG]` |
 | `GetDistanceFraction()` | | progress 0..1 | `[sig]` |
 
-Restore (INFERRED): on the host, use the `Network*` setters to set `syncSplineIndex`,
-`syncDistance`, `syncSpeed`, `targetSpeed`, and `syncTime = NetworkTime.time`. Do not save
+Restore (T4 test, 2026-11-27): on the host, use the `Network*` setters to set `syncSplineIndex`,
+`syncDistance`, `syncSpeed`, `targetSpeed`, and `syncTime = NetworkTime.time`. Also set
+`_currentSplineIndex`, `_currentDistance` and `_currentSpeed`. On the server, `FixedUpdate`
+compares the sync vars with the `_current*` values. If the sync vars and the `_current*` values are
+different, `FixedUpdate` copies the `_current*` values to the sync vars. Then it logs `"{0} server sync. index: ..."`. `[ISIL]` `[runtime]` Do not save
 `syncTime`. `NetworkTime` resets at each host start (`NetworkMinder.StartHost` calls
 `NetworkTime.ResetStatics`). The engine on/off state is a `TrackedPeckState` (section 5).
 

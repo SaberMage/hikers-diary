@@ -42,7 +42,19 @@ slideshow (revisions b and c).
    The host does not save a prop on a moving platform. The log shows that prop one time.
    Result on 2026-11-27: on the host, 306 of 306 props went to their saved positions. One
    prop that we moved by 3 m in the Diary file went to the new position. See the comment on #3.
-4. **T4 — runtime vehicle map, then vehicles, lights, time (#4).**
+<!-- [doc->REQ-VEHICLE-STATE] -->
+<!-- [doc->REQ-TIME-OF-DAY] -->
+4. **T4 — runtime vehicle map, then vehicles, lights, time (#4).** The host finds each
+   `NetworkedTrain` and each `MovementDriver` by its GameObject path. The host does not use a
+   path that two vehicles of one kind have. For a `NetworkedTrain`, the host saves the spline
+   index, the distance, the speed and the target speed. For a `MovementDriver`, the host saves
+   the position and the speed. The host also saves the Enviro date and time. After a game load,
+   the host sets these values again.
+   Result on 2026-11-27: the vehicle map is in section 4.0 of the reference document. On the host,
+   3 of 3 vehicles and the time went to their saved values. Before the game load, we changed the
+   monorail distance in the Diary file by 50. After the load, the monorail stayed at that
+   distance. The time continued from the saved time. We did not
+   do the light test or the solo gondola test.
 5. **T5 — player state (#5).** Do the host first. The host has no body. Then do the clients
    with the T1 method.
 6. **T6 — colors (#6).**

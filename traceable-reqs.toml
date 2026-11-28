@@ -49,3 +49,13 @@ required_stages = ["doc", "impl", "unit"]
 id = "REQ-PROP-POSE"
 title = "The host saves the position and the rotation of each loose prop, finds it again by savablePropGuid, then sceneId, then a unique GameObject path, and puts it back after a game load (#3)"
 required_stages = ["doc", "impl", "unit"]
+
+[[requirements]]
+id = "REQ-VEHICLE-STATE"
+title = "The host saves the state of each NetworkedTrain and each MovementDriver. It finds each one again by its unique GameObject path. After a game load, it sets the saved state again (#4)"
+required_stages = ["doc", "impl", "unit"]
+
+[[requirements]]
+id = "REQ-TIME-OF-DAY"
+title = "The host saves the Enviro date and time. After a game load, it sets them again (#4)"
+required_stages = ["doc", "impl", "unit"]

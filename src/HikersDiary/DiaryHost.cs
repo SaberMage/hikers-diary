@@ -118,6 +118,8 @@ public sealed class DiaryHost : MonoBehaviour
         }
         RestoreBodies(save.Bodies, host);
         RestoreProps(save.Props);
+        RestoreVehicles(save.Vehicles);
+        RestoreTime(save.EnviroTicks);
     }
 
     /// <summary>Writes the Diary file of the loaded slot. Also called when the host stops.</summary>
@@ -139,6 +141,8 @@ public sealed class DiaryHost : MonoBehaviour
                 c.headColorIndex, c.torsoColorIndex, c.legsColorIndex));
         }
         SaveProps(save.Props);
+        SaveVehicles(save.Vehicles);
+        save = save with { EnviroTicks = EnviroTicksNow() };
         try
         {
             DiaryStore.Write(_path, save);
@@ -148,7 +152,7 @@ public sealed class DiaryHost : MonoBehaviour
             Plugin.Logger.LogWarning($"Diary: snapshot failed: {e.Message}");
             return;
         }
-        Plugin.Logger.LogInfo($"Diary: snapshot ({reason}) of slot {_slotUid}, {save.Bodies.Count} bodies, {save.Props.Count} props.");
+        Plugin.Logger.LogInfo($"Diary: snapshot ({reason}) of slot {_slotUid}, {save.Bodies.Count} bodies, {save.Props.Count} props, {save.Vehicles.Count} vehicles, time {(save.EnviroTicks == 0 ? "none" : new DateTime(save.EnviroTicks).ToString("s"))}.");
     }
 
     // This set holds the props on a moving platform that the log showed. The log shows each prop one time.
@@ -218,6 +222,92 @@ public sealed class DiaryHost : MonoBehaviour
         int found = byKey["guid"] + byKey["scene"] + byKey["path"];
         Plugin.Logger.LogInfo($"Diary: restored {found} of {records.Count} props (guid {byKey["guid"]}, scene {byKey["scene"]}, " +
             $"path {byKey["path"]}; scene match with other path {pathDiffers}; taken from start home {unpinned}).");
+    }
+
+    // The log shows the vehicle map one time for each run (T4 step 1).
+    private static bool _vehicleMapLogged;
+
+    // [impl->REQ-VEHICLE-STATE]
+    private static void SaveVehicles(List<VehicleRecord> into)
+    {
+        bool log = !_vehicleMapLogged;
+        _vehicleMapLogged = true;
+        foreach (NetworkedTrain t in Object.FindObjectsOfType<NetworkedTrain>())
+        {
+            into.Add(new VehicleRecord("train", PathOf(t.transform), t.NetworksyncSplineIndex, t.NetworksyncDistance,
+                t.NetworksyncSpeed, t.NetworktargetSpeed));
+            if (log)
+                Plugin.Logger.LogInfo($"Diary: vehicle map: NetworkedTrain '{t.name}' path {PathOf(t.transform)}, hasCable {t.hasCable}, " +
+                    $"splines {t.splines?.Length ?? 0}, cars {t.cars?.Length ?? 0}, at {t.transform.position}, fraction {t.GetDistanceFraction():0.000}.");
+        }
+        foreach (MovementDriver d in Object.FindObjectsOfType<MovementDriver>())
+        {
+            into.Add(new VehicleRecord("driver", PathOf(d.transform), 0, d._localPosition, d._localSpeed, 0f));
+            if (log)
+                Plugin.Logger.LogInfo($"Diary: vehicle map: MovementDriver '{d.name}' path {PathOf(d.transform)}, at {d.transform.position}, " +
+                    $"position {d._localPosition}, speed {d._localSpeed}, max speed {d.maxSpeed}.");
+        }
+    }
+
+    // [impl->REQ-VEHICLE-STATE]
+    private static void RestoreVehicles(List<VehicleRecord> records)
+    {
+        if (records.Count == 0) return;
+        var byKey = VehicleRecord.ByUniquePath(records);
+        int found = 0;
+        foreach (NetworkedTrain t in Object.FindObjectsOfType<NetworkedTrain>())
+        {
+            if (!byKey.TryGetValue(VehicleRecord.Key("train", PathOf(t.transform)), out VehicleRecord r)) continue;
+            // On the server, FixedUpdate compares the sync vars with the _current* values. If the sync
+            // vars and the _current* values are different, FixedUpdate copies the _current* values to
+            // the sync vars. Thus, set the two groups of values.
+            t._currentSplineIndex = r.SplineIndex;
+            t._currentDistance = r.Distance;
+            t._currentSpeed = r.Speed;
+            // NetworkTime starts again at each host start. Thus, set syncTime to NetworkTime.time, not to the saved value.
+            t.NetworksyncSplineIndex = r.SplineIndex;
+            t.NetworksyncDistance = r.Distance;
+            t.NetworksyncSpeed = r.Speed;
+            t.NetworktargetSpeed = r.TargetSpeed;
+            t.NetworksyncTime = NetworkTime.time;
+            found++;
+        }
+        foreach (MovementDriver d in Object.FindObjectsOfType<MovementDriver>())
+        {
+            if (!byKey.TryGetValue(VehicleRecord.Key("driver", PathOf(d.transform)), out VehicleRecord r)) continue;
+            // ServerSync copies the local values to the sync vars, with syncTime = NetworkTime.time.
+            d._localPosition = r.Distance;
+            d._localSpeed = r.Speed;
+            d.ServerSync();
+            found++;
+        }
+        Plugin.Logger.LogInfo($"Diary: restored {found} of {records.Count} vehicles.");
+    }
+
+    // Returns the Enviro date and time as DateTime ticks. If Enviro is not ready, returns 0.
+    // [impl->REQ-TIME-OF-DAY]
+    private static long EnviroTicksNow()
+    {
+        var time = Enviro.EnviroManager.instance?.Time;
+        if (time == null) return 0;
+        try
+        {
+            return new DateTime(time.years, time.months, time.days, time.hours, time.minutes, time.seconds).Ticks;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return 0;
+        }
+    }
+
+    // [impl->REQ-TIME-OF-DAY]
+    private static void RestoreTime(long ticks)
+    {
+        var time = Enviro.EnviroManager.instance?.Time;
+        if (ticks == 0 || time == null) return;
+        var d = new DateTime(ticks);
+        time.SetDateTime(d.Second, d.Minute, d.Hour, d.Day, d.Month, d.Year);
+        Plugin.Logger.LogInfo($"Diary: restored time {d:s}.");
     }
 
     private static string PathOf(Transform t)
