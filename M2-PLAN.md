@@ -236,6 +236,80 @@ These items are not in the scope: the join at start, the session history walk an
       save. If there is no local save, the player wakes and stands before the fade out is
       complete. Plan T3d after T3c, because the spike did not measure the EOS lobby search.
 
+      These are the game facts. Their source is `ilspycmd` and the Cpp2IL ISIL dump (2026-11-28).
+      - The session ID is the join code: 6 characters (`EOSPrivateLobbyManager.IsValidCode`). It is
+        also the EOS lobby ID. `JoinLobbyAndConnectByCode` calls `JoinLobby(code, crossplay)`, and
+        `JoinLobby` calls `LobbyInterface.JoinLobbyById`. The crossplay value comes from
+        `PlayerPrefs` key `settings_crossplay`.
+      - The host lobby has the attributes `world_name`, `world_username` and
+        `world_owner_platformid`. The bucket is `defaultbucket`. The spike must measure if
+        `world_name` is the save title.
+      - The friend sessions come from `FriendGamePresenceManager.Presence.CurrentLobbies`. It is a list of
+        `BigWalkLobbyData` (`lobbyCode`, `userName`, and `roomName` from the base type `LobbyData`). `JoinMenu` gets this list
+        through `RegisterForLobbyUpdate`. On Steam, the source is the rich presence of the friends.
+      - To join, `JoinMenu.ConnectTo(code)` calls `NetworkMinder.SetToEOSTransport()` and
+        `NetworkMinder.JoinGame(code)`. The test aid `Spike.AutoJoinCode` already uses it (M1).
+        If the host has a password, the client shows `PasswordMenu`. `SubmitPassword` calls
+        `NetworkMinder.SetServerPassword` and sends the password.
+      - If a join fails, `JoinMenu.OnFailedConnection` and `HouseAuthenticator.OnAuthResponseMessage`
+        call `MainMenuManager.ShowErrorMenu`. `PasswordMenu.Cancel` calls `NetworkManager.StopClient`.
+      - The EOS lobby search is in `com.Epic.OnlineServices.dll`. `EOSManager.Instance` has
+        `GetEOSLobbyInterface()` and `GetProductUserId()`. `LobbyInterface.CreateLobbySearch` makes a
+        `LobbySearch`. It has `SetParameter` (an `AttributeData` and a `ComparisonOp`), `SetLobbyId`,
+        `Find` (with a `LobbySearchOnFindCallback`), `GetSearchResultCount` and
+        `CopySearchResultByIndex`. `LobbyDetails.CopyInfo` gives `LobbyDetailsInfo`
+        (`PermissionLevel`, `BucketId`, `AllowJoinById`, `AvailableSlots`). If the permission level
+        is not `PublicAdvertised`, a search by attribute can find no lobby.
+
+      Open questions for the spike:
+      - Does `CurrentLobbies` have the sessions of the friends during the gameplay, or only while
+        `JoinMenu` is open? Is `roomName` the save title of the host?
+      - Which permission level, bucket and attributes does the lobby of the host have?
+      - Does a lobby search by `world_name` find the lobby of a friend? Does it find the lobby of
+        a different user who is not a friend? Does a search by lobby ID find it?
+      - Does `DelegateSupport.ConvertDelegate` work for `LobbySearchOnFindCallback` (a `ref`
+        parameter)? If it does not work, read `GetSearchResultCount` some seconds after `Find`.
+      - After a failed join (a bad code or a bad password), which menu shows? How long does it
+        take? Can the mod then host the local save with `DiaryHost.HostSave`?
+
+      Do these tasks in this order:
+      1. **T3d-1 — spike (flat screen, two computers).** The test aid is `Spike.LobbySearch`. If it is empty, it is off.
+         10 s after the gameplay starts, the mod logs these items:
+         - the `CurrentLobbies` list (code, user name and world name of each session)
+         - the lobby of this session (`LobbyDetailsInfo` and all attributes)
+         - the result of a lobby search by `world_name` equal to the test text
+         - the result of a search by lobby ID, if the test text is a valid code
+         - for each result: the lobby ID, the permission level and the attributes
+         The mod repeats the search every 30 s. To test a failed join, use `Spike.AutoJoinCode`
+         with a bad code. Then use it with a good code and a bad `Spike.AutoJoinPassword`. Log the
+         menus and the time until the first screen or the title menu shows.
+         Test: KITSUBITO hosts a save with the second game account. HFENDULEAM searches for its
+         title and its code. Then HFENDULEAM hosts a save, and KITSUBITO searches for it. If the two accounts are not friends, the
+         `CurrentLobbies` test needs the operator.
+         Result of runs 1 to 3 (2026-11-28, HFENDULEAM only, host `ModTests`):
+         - `CurrentLobbies` had 0 sessions (`SteamPresence`). No friend was in a session.
+         - The lobby of the host has these values: permission `JoinViaPresence`, presence
+           disabled, join by ID enabled, bucket `defaultbucket`, 12 members maximum. `world_name`
+           is the save title (`ModTests`).
+         - An EOS search by attribute finds only `PublicAdvertised` lobbies. Thus, a search by
+           title cannot find a lobby of the game. For rule 4, the mod must change the permission
+           of the lobby of the host to `PublicAdvertised`. A join by code does not need a search.
+         - The `ValueType` wrappers of `com.Epic.OnlineServices.dll` are not safe. The game
+           stopped in `LobbyDetails.CopyInfo` (run 1) and in `CopyLobbyDetailsHandle` (run 2),
+           with no exception. `SetParameter` returned `InvalidParameters` (run 3).
+           `DelegateSupport.ConvertDelegate` cannot convert a delegate with a `ref` parameter.
+           `LobbyInfo.detailsInfo` (a copy that the game keeps) is safe to read.
+         - Next step: call the EOS C API directly in `EOSSDK-Win64-Shipping.dll` (P/Invoke):
+           `EOS_Platform_GetLobbyInterface`, `EOS_Lobby_CreateLobbySearch`,
+           `EOS_LobbySearch_SetParameter`, `EOS_LobbySearch_Find` with a native callback,
+           `EOS_LobbySearch_GetSearchResultCount` and `EOS_LobbySearch_CopySearchResultByIndex`.
+           Read each `ApiVersion` from the `*_API_LATEST` constants of the wrapper. Then test
+           with KITSUBITO as the host.
+      2. **T3d-2 — join a friend session.** Plan the design from the spike result. The parts are
+         these: the target (a local save, a friend session or a lobby search result), the password
+         memory (the most recent password of each session, in the diary folder), the join from the
+         first screen in the switch mode, and the change to the local save if the join fails.
+
    Test: the agent does each test with `$TEMP/gears/run-game.sh` and examines the logs. Then
    the operator does the acceptance test of #14 on a flat screen.
 4. **T4 — hint signs (#15).** Plan it after T3.

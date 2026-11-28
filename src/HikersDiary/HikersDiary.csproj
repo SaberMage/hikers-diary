@@ -35,6 +35,10 @@
     <Reference Include="Enviro3.Runtime"><HintPath>$(InteropDir)\Enviro3.Runtime.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.Splines"><HintPath>$(InteropDir)\Unity.Splines.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.TextMeshPro"><HintPath>$(InteropDir)\Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="com.Epic.OnlineServices"><HintPath>$(InteropDir)\com.Epic.OnlineServices.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="com.playeveryware.eos.core"><HintPath>$(InteropDir)\com.playeveryware.eos.core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Shipmate.Porting.Base"><HintPath>$(InteropDir)\Shipmate.Porting.Base.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Shipmates.Scripts"><HintPath>$(InteropDir)\Shipmates.Scripts.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Il2Cppmscorlib"><HintPath>$(InteropDir)\Il2Cppmscorlib.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 
