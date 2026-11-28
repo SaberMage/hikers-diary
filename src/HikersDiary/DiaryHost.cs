@@ -337,6 +337,7 @@ public sealed class DiaryHost : MonoBehaviour
             Quaternion rot = pt.rotation * new Quaternion(rec.Rotation[0], rec.Rotation[1], rec.Rotation[2], rec.Rotation[3]);
             // ponytail: in the next physics step, the car moves before the object does. Aim at the place of the car
             // then. Measured slip without it: 7 to 9 cm at 3 m/s. A turn of the car in that step is not included.
+            // Exact fix if this causes a problem: move the objects in a hook on the car movement (#10).
             Rigidbody car = sp.platformingBody != null ? sp.platformingBody.rb : null;
             if (car != null) pos += car.GetPointVelocity(pos) * Time.fixedDeltaTime;
             pend.Place(pos, rot, sp);
