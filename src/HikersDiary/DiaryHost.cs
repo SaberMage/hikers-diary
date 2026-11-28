@@ -18,6 +18,8 @@ public sealed class DiaryHost : MonoBehaviour
     internal static string StoreDir;
     internal static bool MakeTestBody;
     internal static bool AutoHost;
+    internal static string AutoJoinCode;
+    internal static string AutoJoinPassword;
 
     private const float SnapshotSeconds = 10f;
     private float _nextSnapshot;
@@ -38,9 +40,11 @@ public sealed class DiaryHost : MonoBehaviour
         {
             _slotUid = null;
             _testBodyMade = false;
-            if (AutoHost && !_autoHostTried) TryAutoHost();
+            if (!string.IsNullOrEmpty(AutoJoinCode)) TryAutoJoin();
+            else if (AutoHost && !_autoHostTried) TryAutoHost();
             return;
         }
+        LogJoins();
         PlayerCharacter host = LocalPlayer();
         SaveData slot = SaveManager.instance?.currentData;
         if (host == null || slot == null || string.IsNullOrEmpty(slot.filenameUid)) return;
@@ -61,6 +65,20 @@ public sealed class DiaryHost : MonoBehaviour
         {
             _nextSnapshot = Time.time + SnapshotSeconds;
             Snapshot();
+        }
+    }
+
+    // Remote players that the log has shown. The log shows where each one spawned (T1 rejoin check).
+    private static readonly HashSet<int> _seenPlayers = new();
+
+    private static void LogJoins()
+    {
+        var all = PlayerCharacter.allPlayerCharacters;
+        for (int i = 0; all != null && i < all.Count; i++)
+        {
+            PlayerCharacter pc = all[i];
+            if (pc == null || pc.isLocalPlayer || !_seenPlayers.Add(pc.GetInstanceID())) continue;
+            Plugin.Logger.LogInfo($"Diary: player {pc.playerNetworking?.identifier} spawned at {pc.transform.position}.");
         }
     }
 
@@ -180,8 +198,49 @@ public sealed class DiaryHost : MonoBehaviour
         SaveManager.WriteCurrentSaveData();
         NetworkMinder.SetServerPassword(last.password);
         PlayerCountSwapper.playerCount = PlayerCount.PlayerCount2;
-        Plugin.Logger.LogInfo($"Auto host: save '{last.slotName}' ({last.filenameUid}), 2 players.");
+        // The host menu (MagicCode) makes the join code. The EOS lobby needs it.
+        EOSPrivateLobbyManager.Instance.GenerateGameCode();
+        Plugin.Logger.LogInfo($"Auto host: save '{last.slotName}' ({last.filenameUid}), 2 players, join code {EOSPrivateLobbyManager.Instance.CurrentLobbyCode}.");
         NetworkMinder.StartHost();
+    }
+
+    private bool _joinSent;
+    private bool _passwordSent;
+
+    /// <summary>
+    /// Test aid for a second client: at the first menu, connect with the join code through
+    /// JoinMenu.ConnectTo, the call of the join menu. If the password menu shows, type the password.
+    /// </summary>
+    private void TryAutoJoin()
+    {
+        if (NetworkClient.active)
+        {
+            PasswordMenu pm = _passwordSent ? null : Object.FindObjectOfType<PasswordMenu>();
+            if (pm != null)
+            {
+                _passwordSent = true;
+                pm.passwordField.text = AutoJoinPassword;
+                pm.SubmitPassword();
+                Plugin.Logger.LogInfo("Auto join: password sent.");
+            }
+            return;
+        }
+        if (_joinSent) return;
+        // The first menu is MicCheckMenu (welcome and microphone check), then TitleMenu.
+        if (Object.FindObjectOfType<TitleMenu>() == null && Object.FindObjectOfType<MicCheckMenu>() == null)
+        {
+            _titleSeenAt = -1f;
+            return;
+        }
+        if (_titleSeenAt < 0f) { _titleSeenAt = Time.time; return; }
+        if (Time.time - _titleSeenAt < 3f) return;
+        // The join menu is not active yet. Find it with the inactive objects.
+        var menus = Resources.FindObjectsOfTypeAll<JoinMenu>();
+        if (menus == null || menus.Length == 0) return;
+        _joinSent = true;
+        NetworkMinder.SetServerPassword(AutoJoinPassword);
+        Plugin.Logger.LogInfo($"Auto join: code {AutoJoinCode}.");
+        menus[0].ConnectTo(AutoJoinCode);
     }
 
     /// <summary>Makes a body of the host with a test identifier, so that one computer can test the save and the restore.</summary>
@@ -191,6 +250,15 @@ public sealed class DiaryHost : MonoBehaviour
         c.identifier = "hikers-diary-test-body";
         Plugin.Logger.LogInfo($"Diary: made test body at {c.transform.position}.");
     }
+}
+
+/// <summary>T1 check: logs each body lookup of the game rejoin path and its result.</summary>
+[HarmonyPatch(typeof(Corpse), nameof(Corpse.FindMatch))]
+internal static class BodyMatchLog
+{
+    [HarmonyPostfix]
+    private static void After(string identifier, Corpse __result) =>
+        Plugin.Logger.LogInfo($"Diary: Corpse.FindMatch({identifier}) -> {(__result == null ? "none" : "body at " + __result.transform.position)}.");
 }
 
 /// <summary>Saves a last snapshot before the host stops, while the bodies still exist.</summary>

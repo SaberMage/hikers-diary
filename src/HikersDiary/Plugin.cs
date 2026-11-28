@@ -35,13 +35,18 @@ public sealed class Plugin : BasePlugin
             "Host only: make one test body at the host position, to test the body save and restore on one computer.").Value;
         DiaryHost.AutoHost = Config.Bind("Spike", "AutoHost", false,
             "Test aid: at the title menu, host the save that was played last, for 2 players.").Value;
+        DiaryHost.AutoJoinCode = Config.Bind("Spike", "AutoJoinCode", "",
+            "Test aid for a second client: at the title menu, join the session with this join code.").Value.Trim();
+        DiaryHost.AutoJoinPassword = Config.Bind("Spike", "AutoJoinPassword", "",
+            "Test aid for a second client: the password of the session in AutoJoinCode.").Value;
         ClassInjector.RegisterTypeInIl2Cpp<DiaryHost>();
         var driver = new GameObject("HikersDiary") { hideFlags = HideFlags.HideAndDontSave };
         Object.DontDestroyOnLoad(driver);
         driver.AddComponent<DiaryHost>();
         var harmony = new HarmonyLib.Harmony(Guid);
         harmony.PatchAll(typeof(SessionStopPatches));
-        Logger.LogInfo($"Diary: {harmony.GetPatchedMethods().Count()} session-stop hooks installed.");
+        harmony.PatchAll(typeof(BodyMatchLog));
+        Logger.LogInfo($"Diary: {harmony.GetPatchedMethods().Count()} hooks installed.");
         Logger.LogInfo($"Diary armed. Store: {DiaryHost.StoreDir}");
     }
 }

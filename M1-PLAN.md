@@ -28,6 +28,8 @@ slideshow (revisions b and c).
    Load the game. Spawn the body again. A second client joins. Make sure that
    `Corpse.FindMatch` finds the body and the game spawns the player at the body. This is the
    largest risk. If the spike fails, stop. Tell the liaison before you start T2.
+   Result on 2026-11-27: the spike passed with a second client on KITSUBITO. See the comment
+   on #1.
 <!-- [doc->REQ-DIARY-SAVE] -->
 2. **T2 — Diary save (#2).** Write the save format and the atomic write in
    `HikersDiary.Core`. Add unit tests. Save a snapshot at an interval and when the session
@@ -45,8 +47,9 @@ slideshow (revisions b and c).
 1. Which identifier is the key: the EOS PUID or the Steam ID? T1 found the answer on
    2026-11-27: the EOS PUID.
 2. Is `NetworkIdentity.sceneId` stable across loads? Measure it in T3.
-3. What is the second client for two-player tests? On 2026-11-27, the operator agreed to give a second account on
-   KITSUBITO (Ubuntu, Proton) or SCELTOUIN (Windows).
+3. What is the second client for two-player tests? The answer on 2026-11-27: KITSUBITO
+   (Ubuntu 24.04, Proton Experimental), with a second game account. With the test aids
+   `Spike.AutoJoinCode` and `Spike.AutoJoinPassword`, the client joins a session automatically.
 
 ## Gate
 
