@@ -37,6 +37,8 @@ public sealed class Plugin : BasePlugin
             "Host-only test aid: at the first snapshot, change the state of the red lookout light. Use it to make sure that the game load keeps the light state.").Value;
         DiaryHost.CullTrip = Config.Bind("Spike", "CullTrip", false,
             "Host-only test aid for T4b: after a PropOnPlatform drop, move the host 400 m away and back, and log the prop and the car.").Value;
+        DiaryHost.StartTrain = Config.Bind("Spike", "StartTrain", false,
+            "Host-only test aid for T4b: at the game load, start the monorail (the game dev helper PeckDevHelper).").Value;
         DiaryHost.StartChairlift = Config.Bind("Spike", "StartChairlift", false,
             "Host-only test aid for T4b: after the game load, start the chairlift (the game dev helper PeckDevHelper, as if the key is in its slot).").Value;
         DiaryHost.PropOnPlatform = Config.Bind("Spike", "PropOnPlatform", "",

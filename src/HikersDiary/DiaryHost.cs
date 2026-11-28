@@ -22,6 +22,8 @@ public sealed class DiaryHost : MonoBehaviour
     internal static string PropOnPlatform;
     internal static bool StartChairlift;
     internal static bool CullTrip;
+    internal static bool StartTrain;
+    private static bool _trainStarted;
     private static bool _chairliftStarted;
     private static bool _propDropped;
     private static bool _movedToPole;
@@ -130,6 +132,12 @@ public sealed class DiaryHost : MonoBehaviour
             _chairliftStarted = true;
             PeckDevHelper.Trigger(new PeckDevHelper.UnlockRules { chairlift = true });
             Plugin.Logger.LogInfo("Diary: test aid: chairlift started (PeckDevHelper).");
+        }
+        if (StartTrain && !_trainStarted)
+        {
+            _trainStarted = true;
+            PeckDevHelper.Trigger(new PeckDevHelper.UnlockRules { train = true });
+            Plugin.Logger.LogInfo("Diary: test aid: monorail started (PeckDevHelper).");
         }
         if (save == null)
         {
@@ -301,18 +309,20 @@ public sealed class DiaryHost : MonoBehaviour
         for (int i = _platformPending.Count - 1; i >= 0; i--)
         {
             (Prop p, PropRecord rec) = _platformPending[i];
-            // A parked platform is not in the world yet: no player is near it, and nothing touches it.
-            // Hold its car loaded (CarHoldPatch). Its props wait for it.
-            if (!late && parked.Contains(rec.Platform))
+            // An unloaded car has no colliders: no player is near it, and nothing touches it. The chairlift
+            // also parks it below the ground. Load the car again (CarHoldPatch). Its props wait for it.
+            TrainCar hold = null;
+            if (platforms.TryGetValue(rec.Platform, out StickyPlatform wait) && wait.platformingBody != null)
+                carOf.TryGetValue(wait.platformingBody.Pointer, out hold);
+            if (!late && (parked.Contains(rec.Platform) || (hold != null && hold.cullState)))
             {
-                if (platforms.TryGetValue(rec.Platform, out StickyPlatform wait) && wait.platformingBody != null
-                    && carOf.TryGetValue(wait.platformingBody.Pointer, out TrainCar hold))
-                    CarHoldPatch.Held[hold.Pointer] = Time.time + 10f;
+                if (hold != null) CarHoldPatch.Held[hold.Pointer] = Time.time + 10f;
                 continue;
             }
             _platformPending.RemoveAt(i);
             // A home or a player that took the prop after RestoreProps (a body, the host) keeps it.
-            if (p == null || !IsLoose(p) || parked.Contains(rec.Platform) || !platforms.TryGetValue(rec.Platform, out StickyPlatform sp))
+            if (p == null || !IsLoose(p) || parked.Contains(rec.Platform) || (hold != null && hold.cullState)
+                || !platforms.TryGetValue(rec.Platform, out StickyPlatform sp))
             {
                 _platformMissed++;
                 continue;
@@ -383,9 +393,9 @@ public sealed class DiaryHost : MonoBehaviour
             $"car culled {(car != null ? car.cullState.ToString() : "?")}, prop at {(p != null ? p.transform.position.ToString() : "gone")}, " +
             $"relative {(p != null ? frame.InverseTransformPoint(p.transform.position).ToString() : "-")}, " +
             $"stickyPlatform {(p?.houseNetworkTransform?.stickyPlatform != null ? "yes" : "none")}, kinematic {p?.rb?.isKinematic}.");
-        var cars = Object.FindObjectsOfType<TrainCar>().Where(c => c.platformingBody != null && PathOf(c.transform).Contains("ChairLift")).ToList();
+        var cars = Object.FindObjectsOfType<TrainCar>().Where(c => c.platformingBody != null && PathOf(c.transform).StartsWith(PathOf(_tripOn.transform).Split('/')[0])).ToList();
         var live = cars.Where(c => !c.cullState).Select(c => (c.platformingBody.rb.position - host.transform.position).magnitude).OrderBy(d => d).ToList();
-        Plugin.Logger.LogInfo($"Diary: test aid: trip step {_tripStep}: {cars.Count} chairlift cars, {live.Count} not culled, distances to host [{string.Join(", ", live.Select(d => d.ToString("0")))}], " +
+        Plugin.Logger.LogInfo($"Diary: test aid: trip step {_tripStep}: {cars.Count} cars, {live.Count} not culled, distances to host [{string.Join(", ", live.Select(d => d.ToString("0")))}], " +
             $"parked {cars.Count(c => c.platformingBody.rb.position.y < -50f)}.");
         if (_tripStep == 1) { _tripHome = host.transform.position; host.grease.Teleport(_tripHome + new Vector3(400f, 50f, 0f), host.transform.rotation); }
         if (_tripStep == 3) host.grease.Teleport(_tripHome, host.transform.rotation);

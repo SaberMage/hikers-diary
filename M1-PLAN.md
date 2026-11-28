@@ -83,17 +83,17 @@ slideshow (revisions b and c).
    colliders, a prop falls through the car.
 
    The game unloads each train car that has no contact and no player near it (about 40 m). An
-   unloaded car has no colliders and is at one parked position below the ground. For the
-   chairlift, this position is (133, -82, -64). A car with a contact (a prop or a player) stays
+   unloaded car has no colliders. The chairlift also moves an unloaded car to one parked position
+   below the ground: (133, -82, -64). An unloaded monorail car stays on its track. A car with a contact (a prop or a player) stays
    loaded at all distances (`TrainCar.UpdateCullState`). Thus, during a session, a prop on a car
    stays on it.
 
    After a game load, a prop does not touch its car yet. Thus, the game unloads a car that is far
    from all players.
 
-   Each gondola car has a platform. If two platforms have the same position, the host finds that
-   the two platforms are parked. Then the host loads the car of each parked platform again
-   (`CarHoldPatch`). When the car is not parked, the host moves the prop onto it. When the prop
+   Each car has a platform. If the car is unloaded, the host loads it again (`CarHoldPatch`). If
+   two platforms have the same position, the host finds that the two platforms are parked. The
+   host also loads the car of each parked platform again. When the car is not parked, the host moves the prop onto it. When the prop
    touches the car, the host stops the hold, and the game keeps the car loaded. If the prop does
    not touch the car in 10 s, the hold stops and the log shows a warning.
 
@@ -117,7 +117,16 @@ slideshow (revisions b and c).
    the hold. In the next three snapshots, the peg tile was on its car, 5 mm or less from its
    position in the first snapshot.
 
-   The carousel has no `StickyPlatform`. Thus, T4b does not apply to the carousel.
+   We did the same test on 2026-11-27 with a moving monorail car. A test aid (`StartTrain`) started
+   the monorail with `PeckDevHelper`. At the game load, the host was 424 m from the car. The host
+   loaded the car again and moved the peg tile onto it. In the next three snapshots, the peg tile
+   was on its car, 0.1 m or less from its position in the first snapshot.
+
+   The carousel has no `StickyPlatform`. All colliders of the carousel seat are on the layer
+   `World`, and the physics ignores the collisions between the layers `Prop` and `World`. Thus, a
+   loose prop cannot stay on the carousel. A player can hold a prop on the carousel, and T5 saves
+   the held prop. We did the test on 2026-11-27. We started the carousel with its knob and put a
+   peg tile on the seat. The peg tile fell through the seat.
 <!-- [doc->REQ-PLAYER-STATE] -->
 5. **T5 — player state (#5).** Do the host first. The host has no body. Then do the clients
    with the T1 method. In each snapshot, the host saves these data of its own player:
